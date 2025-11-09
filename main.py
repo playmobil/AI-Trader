@@ -9,10 +9,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from prompts.agent_prompt import all_nasdaq_100_symbols
-# Import tools and prompts
+# 导入工具和提示
 from tools.general_tools import get_config_value, write_config_value
 
-# Agent class mapping table - for dynamic import and instantiation
+# Agent类映射表 - 用于动态导入和实例化
 AGENT_REGISTRY = {
     "BaseAgent": {
         "module": "agent.base_agent.base_agent",
@@ -31,17 +31,17 @@ AGENT_REGISTRY = {
 
 def get_agent_class(agent_type):
     """
-    Dynamically import and return the corresponding class based on agent type name
+    根据agent类型名称动态导入并返回对应的类
 
     Args:
-        agent_type: Agent type name (e.g., "BaseAgent")
+        agent_type: Agent类型名称（例如："BaseAgent"）
 
     Returns:
-        Agent class
+        Agent类
 
     Raises:
-        ValueError: If agent type is not supported
-        ImportError: If unable to import agent module
+        ValueError: 如果agent类型不支持
+        ImportError: 如果无法导入agent模块
     """
     if agent_type not in AGENT_REGISTRY:
         supported_types = ", ".join(AGENT_REGISTRY.keys())
@@ -52,7 +52,7 @@ def get_agent_class(agent_type):
     class_name = agent_info["class"]
 
     try:
-        # Dynamic import module
+        # 动态导入模块
         import importlib
 
         module = importlib.import_module(module_path)
@@ -67,16 +67,16 @@ def get_agent_class(agent_type):
 
 def load_config(config_path=None):
     """
-    Load configuration file from configs directory
+    从configs目录加载配置文件
 
     Args:
-        config_path: Configuration file path, if None use default config
+        config_path: 配置文件路径，如果为None则使用默认配置
 
     Returns:
-        dict: Configuration dictionary
+        dict: 配置字典
     """
     if config_path is None:
-        # Default configuration file path
+        # 默认配置文件路径
         config_path = Path(__file__).parent / "configs" / "default_config.json"
     else:
         config_path = Path(config_path)
@@ -99,15 +99,15 @@ def load_config(config_path=None):
 
 
 async def main(config_path=None):
-    """Run trading experiment using BaseAgent class
+    """使用BaseAgent类运行交易实验
 
     Args:
-        config_path: Configuration file path, if None use default config
+        config_path: 配置文件路径，如果为None则使用默认配置
     """
-    # Load configuration file
+    # 加载配置文件
     config = load_config(config_path)
 
-    # Get Agent type
+    # 获取Agent类型
     agent_type = config.get("agent_type", "BaseAgent")
     try:
         AgentClass = get_agent_class(agent_type)
@@ -115,18 +115,18 @@ async def main(config_path=None):
         print(str(e))
         exit(1)
 
-    # Get market type from configuration
+    # 从配置中获取市场类型
     market = config.get("market", "us")
-    # Auto-detect market from agent_type (BaseAgentAStock always uses CN market)
+    # 从agent_type自动检测市场（BaseAgentAStock始终使用中国市场）
     if agent_type == "BaseAgentAStock":
         market = "cn"
     print(f"🌍 Market type: {'A-shares (China)' if market == 'cn' else 'US stocks'}")
 
-    # Get date range from configuration file
+    # 从配置文件获取日期范围
     INIT_DATE = config["date_range"]["init_date"]
     END_DATE = config["date_range"]["end_date"]
 
-    # Environment variables can override dates in configuration file
+    # 环境变量可以覆盖配置文件中的日期
     if os.getenv("INIT_DATE"):
         INIT_DATE = os.getenv("INIT_DATE")
         print(f"⚠️  Using environment variable to override INIT_DATE: {INIT_DATE}")
@@ -134,8 +134,8 @@ async def main(config_path=None):
         END_DATE = os.getenv("END_DATE")
         print(f"⚠️  Using environment variable to override END_DATE: {END_DATE}")
 
-    # Validate date range
-    # Support both YYYY-MM-DD and YYYY-MM-DD HH:MM:SS formats
+    # 验证日期范围
+    # 支持 YYYY-MM-DD 和 YYYY-MM-DD HH:MM:SS 两种格式
     if ' ' in INIT_DATE:
         INIT_DATE_obj = datetime.strptime(INIT_DATE, "%Y-%m-%d %H:%M:%S")
     else:
@@ -150,10 +150,10 @@ async def main(config_path=None):
         print("❌ INIT_DATE is greater than END_DATE")
         exit(1)
 
-    # Get model list from configuration file (only select enabled models)
+    # 从配置文件获取模型列表（仅选择已启用的模型）
     enabled_models = [model for model in config["models"] if model.get("enabled", True)]
 
-    # Get agent configuration
+    # 获取agent配置
     agent_config = config.get("agent_config", {})
     log_config = config.get("log_config", {})
     max_steps = agent_config.get("max_steps", 10)
@@ -161,7 +161,7 @@ async def main(config_path=None):
     base_delay = agent_config.get("base_delay", 0.5)
     initial_cash = agent_config.get("initial_cash", 10000.0)
 
-    # Display enabled model information
+    # 显示已启用的模型信息
     model_names = [m.get("name", m.get("signature")) for m in enabled_models]
 
     print("🚀 Starting trading experiment")
@@ -173,14 +173,14 @@ async def main(config_path=None):
     )
 
     for model_config in enabled_models:
-        # Read basemodel and signature directly from configuration file
+        # 直接从配置文件读取basemodel和signature
         model_name = model_config.get("name", "unknown")
         basemodel = model_config.get("basemodel")
         signature = model_config.get("signature")
         openai_base_url = model_config.get("openai_base_url",None)
         openai_api_key = model_config.get("openai_api_key",None)
-        
-        # Validate required fields
+
+        # 验证必需字段
         if not basemodel:
             print(f"❌ Model {model_name} missing basemodel field")
             continue
@@ -192,39 +192,39 @@ async def main(config_path=None):
         print(f"🤖 Processing model: {model_name}")
         print(f"📝 Signature: {signature}")
         print(f"🔧 BaseModel: {basemodel}")
-            
-        # Initialize runtime configuration
-        # Use the shared config file from RUNTIME_ENV_PATH in .env
-        
+
+        # 初始化运行时配置
+        # 使用.env中RUNTIME_ENV_PATH的共享配置文件
+
         project_root = _Path(__file__).resolve().parent
-        
-        # Get log path configuration
+
+        # 获取日志路径配置
         log_path = log_config.get("log_path", "./data/agent_data")
-        
-        # Check position file to determine if this is a fresh start
+
+        # 检查持仓文件以确定是否为全新开始
         position_file = project_root / log_path / signature / "position" / "position.jsonl"
-        
-        # If position file doesn't exist, reset config to start from INIT_DATE
+
+        # 如果持仓文件不存在，重置配置从INIT_DATE开始
         if not position_file.exists():
-            # Clear the shared config file for fresh start
+            # 清除共享配置文件以便全新开始
             from tools.general_tools import _resolve_runtime_env_path
             runtime_env_path = _resolve_runtime_env_path()
             if os.path.exists(runtime_env_path):
                 os.remove(runtime_env_path)
                 print(f"🔄 Position file not found, cleared config for fresh start from {INIT_DATE}")
-        
-        # Write config values to shared config file (from .env RUNTIME_ENV_PATH)
+
+        # 将配置值写入共享配置文件（来自.env的RUNTIME_ENV_PATH）
         write_config_value("SIGNATURE", signature)
         write_config_value("IF_TRADE", False)
         write_config_value("MARKET", market)
         write_config_value("LOG_PATH", log_path)
-        
+
         print(f"✅ Runtime config initialized: SIGNATURE={signature}, MARKET={market}")
 
-        # Select stock symbols based on agent type and market
-        # BaseAgentAStock has its own default symbols, only set for BaseAgent
+        # 根据agent类型和市场选择股票代码
+        # BaseAgentAStock有自己的默认代码，仅为BaseAgent设置
         if agent_type == "BaseAgentAStock":
-            stock_symbols = None  # Let BaseAgentAStock use its default SSE 50
+            stock_symbols = None  # 让BaseAgentAStock使用其默认的上证50
         elif market == "cn":
             from prompts.agent_prompt import all_sse_50_symbols
 
@@ -233,7 +233,7 @@ async def main(config_path=None):
             stock_symbols = all_nasdaq_100_symbols
 
         try:
-            # Dynamically create Agent instance
+            # 动态创建Agent实例
             agent = AgentClass(
                 signature=signature,
                 basemodel=basemodel,
@@ -250,15 +250,15 @@ async def main(config_path=None):
 
             print(f"✅ {agent_type} instance created successfully: {agent}")
 
-            # Initialize MCP connection and AI model
+            # 初始化MCP连接和AI模型
             await agent.initialize()
             print("✅ Initialization successful")
-            # Run all trading days in date range
+            # 运行日期范围内的所有交易日
             await agent.run_date_range(INIT_DATE, END_DATE)
 
-            # Display final position summary
+            # 显示最终持仓摘要
             summary = agent.get_position_summary()
-            # Get currency symbol from agent's actual market (more accurate)
+            # 从agent的实际市场获取货币符号（更准确）
             currency_symbol = "¥" if agent.market == "cn" else "$"
             print(f"📊 Final position summary:")
             print(f"   - Latest date: {summary.get('latest_date')}")
@@ -268,9 +268,9 @@ async def main(config_path=None):
         except Exception as e:
             print(f"❌ Error processing model {model_name} ({signature}): {str(e)}")
             print(f"📋 Error details: {e}")
-            # Can choose to continue processing next model, or exit
-            # continue  # Continue processing next model
-            exit()  # Or exit program
+            # 可以选择继续处理下一个模型，或退出
+            # continue  # 继续处理下一个模型
+            exit()  # 或退出程序
 
         print("=" * 60)
         print(f"✅ Model {model_name} ({signature}) processing completed")
@@ -282,9 +282,9 @@ async def main(config_path=None):
 if __name__ == "__main__":
     import sys
 
-    # Support specifying configuration file through command line arguments
-    # Usage: python livebaseagent_config.py [config_path]
-    # Example: python livebaseagent_config.py configs/my_config.json
+    # 支持通过命令行参数指定配置文件
+    # 用法: python main.py [config_path]
+    # 示例: python main.py configs/my_config.json
     config_path = sys.argv[1] if len(sys.argv) > 1 else None
 
     if config_path:

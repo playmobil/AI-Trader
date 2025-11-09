@@ -1,0 +1,170 @@
+@startuml AI-Trader Trading Flow
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam backgroundColor #FFFFFF
+
+title AI-Trader交易流程序列图
+
+actor "用户" as User
+participant "main.py" as Main
+participant "配置文件" as Config
+participant "BaseAgent" as Agent
+participant "MCP工具链" as MCP
+participant "AI模型\n(LLM)" as LLM
+participant "数据存储" as Data
+
+== 初始化阶段 ==
+User -> Main: 启动程序\npython main.py [config]
+activate Main
+
+Main -> Config: 加载配置文件
+activate Config
+Config --> Main: 返回配置信息\n(agent_type, models, date_range)
+deactivate Config
+
+Main -> Main: 根据agent_type\n动态加载Agent类
+note right: AGENT_REGISTRY查找
+
+Main -> Agent: 创建Agent实例\n(signature, basemodel, stock_symbols)
+activate Agent
+
+Agent -> MCP: 初始化MCP客户端
+activate MCP
+MCP -> MCP: 启动工具服务\n(trade, price, search, math)
+MCP --> Agent: 返回可用工具列表
+deactivate MCP
+
+Agent -> LLM: 创建AI模型连接\n(ChatOpenAI/DeepSeekChatOpenAI)
+activate LLM
+LLM --> Agent: 模型就绪
+deactivate LLM
+
+Agent --> Main: 初始化完成
+deactivate Agent
+
+== 数据准备阶段 ==
+Main -> Agent: 获取交易日期列表\nget_trading_dates()
+activate Agent
+
+Agent -> Data: 检查position.jsonl
+activate Data
+alt 持仓文件存在
+    Data --> Agent: 返回最后交易日期
+else 持仓文件不存在
+    Data --> Agent: 无记录
+    Agent -> Agent: 注册新Agent\n创建初始持仓
+    Agent -> Data: 写入初始持仓\n{CASH: 10000/100000}
+end
+
+Agent -> Data: 读取merged.jsonl\n验证交易日
+Data --> Agent: 有效交易日列表
+deactivate Data
+
+Agent --> Main: 返回待处理日期列表
+deactivate Agent
+
+== 交易执行阶段 ==
+loop 每个交易日
+    Main -> Agent: run_trading_session(date)
+    activate Agent
+
+    Agent -> Agent: 更新系统提示词\n(包含当日价格、持仓)
+
+    Agent -> Data: 获取当日开盘价
+    activate Data
+    Data --> Agent: 价格数据
+    deactivate Data
+
+    Agent -> Agent: 创建Agent执行器\ncreate_agent(model, tools, prompt)
+
+    loop 推理循环 (最多max_steps次)
+        Agent -> LLM: 发送消息\n"请分析并更新持仓"
+        activate LLM
+
+        LLM -> LLM: 思考分析
+        note right: AI自主决策:\n- 查看市场信息\n- 分析价格趋势\n- 制定交易策略
+
+        LLM -> MCP: 调用工具\n(search/get_price/buy/sell)
+        activate MCP
+
+        alt 搜索工具
+            MCP -> MCP: tool_jina_search
+            MCP --> LLM: 返回市场信息
+        else 价格查询
+            MCP -> Data: 查询价格
+            activate Data
+            Data --> MCP: 返回价格数据
+            deactivate Data
+            MCP --> LLM: 返回价格
+        else 买入交易
+            MCP -> MCP: 验证交易规则\n(现金充足、手数验证)
+            MCP -> Data: 更新持仓\n(加锁写入)
+            activate Data
+            Data --> MCP: 持仓已更新
+            deactivate Data
+            MCP --> LLM: 交易成功
+        else 卖出交易
+            MCP -> MCP: 验证持仓数量
+            MCP -> Data: 更新持仓
+            activate Data
+            Data --> MCP: 持仓已更新
+            deactivate Data
+            MCP --> LLM: 交易成功
+        end
+
+        deactivate MCP
+
+        LLM --> Agent: 返回响应
+        deactivate LLM
+
+        Agent -> Data: 记录日志
+        activate Data
+        Data --> Agent: 日志已保存
+        deactivate Data
+
+        alt 收到停止信号
+            Agent -> Agent: 检测到<FINISH_SIGNAL>
+            note right: 交易决策完成
+            Agent -> Agent: 退出循环
+        else 达到最大步数
+            Agent -> Agent: 强制结束
+        end
+    end
+
+    alt 发生了交易
+        Agent -> Data: 确认持仓已更新
+        activate Data
+        Data --> Agent: 确认
+        deactivate Data
+    else 未发生交易
+        Agent -> Data: 添加无交易记录\n(保持持仓不变)
+        activate Data
+        Data --> Agent: 记录已添加
+        deactivate Data
+    end
+
+    Agent --> Main: 当日交易完成
+    deactivate Agent
+end
+
+== 结果输出阶段 ==
+Main -> Agent: 获取持仓摘要\nget_position_summary()
+activate Agent
+Agent -> Data: 读取最终持仓
+activate Data
+Data --> Agent: 持仓数据
+deactivate Data
+Agent --> Main: 返回摘要信息
+deactivate Agent
+
+Main -> User: 显示交易结果\n(日期、记录数、现金余额)
+
+deactivate Main
+
+note over User, Data
+  完整交易周期结束
+  所有交易记录已持久化
+  可用于性能分析
+end note
+
+@enduml

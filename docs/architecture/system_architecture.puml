@@ -1,0 +1,123 @@
+@startuml AI-Trader System Architecture
+!define RECTANGLE class
+
+skinparam backgroundColor #FFFFFF
+skinparam component {
+    BackgroundColor<<main>> #E1F5FE
+    BackgroundColor<<agent>> #FFF9C4
+    BackgroundColor<<mcp>> #C8E6C9
+    BackgroundColor<<data>> #FFECB3
+    BackgroundColor<<tools>> #F0F4C3
+    BorderColor #424242
+    FontSize 12
+}
+
+title AI-Trader系统架构图
+
+package "入口层 Entry" {
+    [main.py] <<main>> as Main
+    [配置文件\nconfigs/*.json] as Config
+}
+
+package "Agent层 Agent Layer" {
+    [BaseAgent\n(通用交易Agent)] <<agent>> as BaseAgent
+    [BaseAgentAStock\n(A股专用Agent)] <<agent>> as BaseAgentAStock
+    [BaseAgent_Hour\n(小时级交易)] <<agent>> as BaseAgentHour
+    [agent_prompt.py\n(交易提示词)] <<agent>> as AgentPrompt
+}
+
+package "MCP工具链 MCP Toolchain" {
+    [tool_trade.py\n交易执行] <<mcp>> as TradeTool
+    [tool_get_price_local.py\n价格查询] <<mcp>> as PriceTool
+    [tool_jina_search.py\n信息搜索] <<mcp>> as SearchTool
+    [tool_math.py\n数学计算] <<mcp>> as MathTool
+    [start_mcp_services.py\n启动服务] <<mcp>> as MCPStart
+}
+
+package "数据层 Data Layer" {
+    database "US股票数据" {
+        [merged.jsonl\n(NASDAQ 100)] as USData
+        [agent_data/\n(US交易记录)] as USAgentData
+    }
+
+    database "A股数据" {
+        [A_stock/merged.jsonl\n(SSE 50)] as CNData
+        [agent_data_astock/\n(A股交易记录)] as CNAgentData
+    }
+}
+
+package "工具层 Utility Layer" {
+    [general_tools.py\n(配置管理)] <<tools>> as GeneralTools
+    [price_tools.py\n(价格工具)] <<tools>> as PriceTools
+    [result_tools.py\n(性能分析)] <<tools>> as ResultTools
+}
+
+package "外部服务 External Services" {
+    cloud "OpenAI API\n(LLM推理)" as OpenAI
+    cloud "Jina AI\n(信息搜索)" as Jina
+    cloud "Alpha Vantage\n(US股票数据)" as AlphaVantage
+    cloud "Tushare\n(A股数据)" as Tushare
+}
+
+' 主流程关系
+Main --> Config : 读取配置
+Main --> BaseAgent : 动态创建
+Main --> BaseAgentAStock : 动态创建
+Main --> BaseAgentHour : 动态创建
+
+' Agent与工具关系
+BaseAgent --> AgentPrompt : 使用提示词
+BaseAgentAStock --> AgentPrompt : 使用提示词
+BaseAgent ..> TradeTool : MCP调用
+BaseAgent ..> PriceTool : MCP调用
+BaseAgent ..> SearchTool : MCP调用
+BaseAgent ..> MathTool : MCP调用
+BaseAgentAStock ..> TradeTool : MCP调用
+BaseAgentAStock ..> PriceTool : MCP调用
+
+' Agent与数据关系
+BaseAgent --> USData : 读取价格
+BaseAgent --> USAgentData : 写入交易
+BaseAgentAStock --> CNData : 读取价格
+BaseAgentAStock --> CNAgentData : 写入交易
+
+' Agent与工具层关系
+BaseAgent --> GeneralTools : 配置管理
+BaseAgent --> PriceTools : 价格查询
+BaseAgentAStock --> GeneralTools : 配置管理
+BaseAgentAStock --> PriceTools : 价格查询
+
+' 工具与数据关系
+TradeTool --> USAgentData : 写入持仓
+TradeTool --> CNAgentData : 写入持仓
+PriceTool --> USData : 读取
+PriceTool --> CNData : 读取
+PriceTools --> USData : 读取
+PriceTools --> CNData : 读取
+
+' 外部服务关系
+BaseAgent --> OpenAI : LLM推理
+BaseAgentAStock --> OpenAI : LLM推理
+SearchTool --> Jina : 搜索请求
+USData <.. AlphaVantage : 数据获取
+CNData <.. Tushare : 数据获取
+
+note right of Main
+  动态加载Agent类
+  支持多模型并行
+  环境变量配置
+end note
+
+note right of BaseAgent
+  支持US/CN市场
+  MCP工具驱动
+  历史回放功能
+end note
+
+note bottom of TradeTool
+  自动检测市场规则
+  T+0/T+1结算
+  100股手数验证(A股)
+end note
+
+@enduml

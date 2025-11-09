@@ -1,0 +1,223 @@
+@startuml MCP Tool Interaction
+!theme plain
+skinparam backgroundColor #FFFFFF
+
+title MCP工具交互图
+
+participant "AI Agent" as Agent
+participant "MCP Client" as Client
+participant "Trade Tool\n(Port 8002)" as Trade
+participant "Price Tool\n(Port 8003)" as Price
+participant "Search Tool\n(Port 8001)" as Search
+participant "Math Tool\n(Port 8000)" as Math
+database "Position File" as PosFile
+database "Price Data" as PriceData
+boundary "Jina AI" as Jina
+
+== MCP工具初始化 ==
+
+Agent -> Client: 初始化MultiServerMCPClient(mcp_config)
+activate Client
+
+Client -> Trade: 连接 http://localhost:8002/mcp
+activate Trade
+Trade --> Client: 注册工具: buy(), sell()
+deactivate Trade
+
+Client -> Price: 连接 http://localhost:8003/mcp
+activate Price
+Price --> Client: 注册工具: get_price_local()
+deactivate Price
+
+Client -> Search: 连接 http://localhost:8001/mcp
+activate Search
+Search --> Client: 注册工具: get_information()
+deactivate Search
+
+Client -> Math: 连接 http://localhost:8000/mcp
+activate Math
+Math --> Client: 注册工具: calculate()
+deactivate Math
+
+Client --> Agent: 返回工具列表 [buy, sell, get_price_local, get_information, calculate]
+deactivate Client
+
+== 工具调用示例：价格查询 ==
+
+Agent -> Client: 调用工具\nget_price_local(symbol="AAPL", date="2025-10-01")
+activate Client
+
+Client -> Price: HTTP POST /mcp\n{"tool": "get_price_local", "params": {...}}
+activate Price
+
+Price -> PriceData: 读取 merged.jsonl\n查询 AAPL 在 2025-10-01 的数据
+activate PriceData
+PriceData --> Price: 返回价格数据\n{open: 255.88, close: 262.24, ...}
+deactivate PriceData
+
+Price --> Client: 返回结果
+deactivate Price
+
+Client --> Agent: 工具执行结果
+deactivate Client
+
+note right of Price
+  价格查询逻辑
+  1. 从merged.jsonl读取指定symbol
+  2. 过滤到指定日期
+  3. 验证不返回未来数据
+  4. 返回OHLCV数据
+end note
+
+== 工具调用示例：信息搜索 ==
+
+Agent -> Client: 调用工具\nget_information(query="AAPL最新财报")
+activate Client
+
+Client -> Search: HTTP POST /mcp\n{"tool": "get_information", "params": {...}}
+activate Search
+
+Search -> Jina: API请求\nJINA_API_KEY认证
+activate Jina
+Jina --> Search: 返回搜索结果
+deactivate Jina
+
+Search --> Client: 返回整理后的信息
+deactivate Search
+
+Client --> Agent: 工具执行结果
+deactivate Client
+
+note right of Search
+  搜索工具特点
+  - 调用Jina AI API
+  - 实时市场信息
+  - 支持中英文查询
+  - 可配置搜索范围
+end note
+
+== 工具调用示例：买入交易 ==
+
+Agent -> Client: 调用工具\nbuy(symbol="AAPL", amount=10)
+activate Client
+
+Client -> Trade: HTTP POST /mcp\n{"tool": "buy", "params": {...}}
+activate Trade
+
+Trade -> Trade: 检测市场类型\n(AAPL无后缀 -> US市场)
+
+Trade -> Trade: 获取配置\nSIGNATURE, TODAY_DATE, MARKET
+
+Trade -> Trade: 获取文件锁\n_position_lock(signature)
+
+Trade -> PosFile: 读取最新持仓\nget_latest_position()
+activate PosFile
+PosFile --> Trade: 返回当前持仓\n{AAPL: 0, CASH: 10000.0}
+deactivate PosFile
+
+Trade -> PriceData: 获取开盘价\nget_open_prices(TODAY_DATE, ["AAPL"])
+activate PriceData
+PriceData --> Trade: 返回价格 {AAPL: 255.88}
+deactivate PriceData
+
+Trade -> Trade: 验证交易条件\n✓ 现金充足: 10000 >= 2558.8\n✓ US市场无手数限制
+
+Trade -> Trade: 计算新持仓\nAPPL: 0 + 10 = 10\nCASH: 10000 - 2558.8 = 7441.2
+
+Trade -> PosFile: 写入新持仓记录\n(追加模式)
+activate PosFile
+PosFile --> Trade: 写入成功
+deactivate PosFile
+
+Trade -> Trade: 释放文件锁
+
+Trade --> Client: 返回成功\n{AAPL: 10, CASH: 7441.2, ...}
+deactivate Trade
+
+Client --> Agent: 工具执行结果
+deactivate Client
+
+note right of Trade
+  交易工具核心逻辑
+  1. 市场检测 (US/CN)
+  2. 规则验证
+     - US: T+0，无手数限制
+     - CN: T+1，100股为单位
+  3. 文件锁保证并发安全
+  4. 原子性更新持仓
+  5. 完整记录交易历史
+end note
+
+== 工具调用示例：卖出交易(A股) ==
+
+Agent -> Client: 调用工具\nsell(symbol="600519.SH", amount=200)
+activate Client
+
+Client -> Trade: HTTP POST /mcp\n{"tool": "sell", "params": {...}}
+activate Trade
+
+Trade -> Trade: 检测市场类型\n(.SH后缀 -> CN市场)
+
+Trade -> Trade: 验证手数\n200 % 100 == 0 ✓
+
+Trade -> Trade: 获取文件锁
+
+Trade -> PosFile: 读取最新持仓
+activate PosFile
+PosFile --> Trade: 返回当前持仓\n{600519.SH: 300, CASH: 50000}
+deactivate PosFile
+
+Trade -> Trade: 验证持仓数量\n300 >= 200 ✓
+
+Trade -> PriceData: 获取开盘价
+activate PriceData
+PriceData --> Trade: 返回价格 {600519.SH: 1850.00}
+deactivate PriceData
+
+Trade -> Trade: 计算新持仓\n600519.SH: 300 - 200 = 100\nCASH: 50000 + 370000 = 420000
+
+Trade -> PosFile: 写入新持仓记录
+activate PosFile
+PosFile --> Trade: 写入成功
+deactivate PosFile
+
+Trade -> Trade: 释放文件锁
+
+Trade --> Client: 返回成功\n{600519.SH: 100, CASH: 420000, ...}
+deactivate Trade
+
+Client --> Agent: 工具执行结果
+deactivate Client
+
+note right of Trade
+  A股特殊处理
+  - 股票代码后缀: .SH/.SZ
+  - 强制100股手数验证
+  - T+1结算(代码中标记)
+  - 人民币计价
+end note
+
+== 工具调用示例：数学计算 ==
+
+Agent -> Client: 调用工具\ncalculate(expression="(255.88 - 250) / 250 * 100")
+activate Client
+
+Client -> Math: HTTP POST /mcp\n{"tool": "calculate", "params": {...}}
+activate Math
+
+Math -> Math: 安全计算表达式\n结果: 2.352
+
+Math --> Client: 返回计算结果: 2.352
+deactivate Math
+
+Client --> Agent: 工具执行结果
+deactivate Client
+
+note right of Math
+  数学工具
+  - 安全的表达式计算
+  - 支持基本数学运算
+  - 避免eval安全问题
+end note
+
+@enduml

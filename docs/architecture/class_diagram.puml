@@ -1,0 +1,244 @@
+@startuml AI-Trader Class Diagram
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam class {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+    ArrowColor #424242
+}
+
+title AI-Trader核心类图
+
+package "agent.base_agent" {
+    class BaseAgent {
+        # 属性 Attributes
+        - signature: str
+        - basemodel: str
+        - market: str
+        - stock_symbols: List[str]
+        - max_steps: int
+        - max_retries: int
+        - base_delay: float
+        - initial_cash: float
+        - init_date: str
+        - client: MultiServerMCPClient
+        - tools: List
+        - model: ChatOpenAI
+        - agent: Any
+        - data_path: str
+        - position_file: str
+
+        # 默认常量
+        + DEFAULT_STOCK_SYMBOLS: List[str]
+
+        # 方法 Methods
+        + __init__(signature, basemodel, ...)
+        + initialize(): None
+        + run_trading_session(today_date): None
+        + run_date_range(init_date, end_date): None
+        + register_agent(): None
+        + get_trading_dates(init_date, end_date): List[str]
+        + get_position_summary(): Dict
+
+        # 私有方法 Private Methods
+        - _get_default_mcp_config(): Dict
+        - _setup_logging(today_date): str
+        - _log_message(log_file, messages): None
+        - _ainvoke_with_retry(message): Any
+        - _handle_trading_result(today_date): None
+    }
+
+    class DeepSeekChatOpenAI {
+        <<ChatOpenAI扩展>>
+        + _create_message_dicts(messages, stop): list
+        + _generate(messages, stop, **kwargs)
+        + _agenerate(messages, stop, **kwargs)
+
+        .. 说明 ..
+        处理DeepSeek API的
+        tool_calls.args格式差异
+    }
+}
+
+package "agent.base_agent_astock" {
+    class BaseAgentAStock {
+        <<A股专用>>
+        # 覆盖属性
+        - market: str = "cn"
+        - DEFAULT_STOCK_SYMBOLS: List[str]
+
+        # 覆盖方法
+        + __init__(...)
+
+        .. 特性 Features ..
+        - 默认上证50股票池
+        - T+1结算规则
+        - 100股手数验证
+        - 中文提示词
+    }
+}
+
+package "main" {
+    class AgentRegistry {
+        <<注册表>>
+        + AGENT_REGISTRY: Dict
+        --
+        "BaseAgent": {...}
+        "BaseAgentAStock": {...}
+        "BaseAgent_Hour": {...}
+    }
+
+    class MainModule {
+        <<主程序>>
+        + get_agent_class(agent_type): Class
+        + load_config(config_path): Dict
+        + main(config_path): None
+    }
+}
+
+package "agent_tools (MCP)" {
+    interface MCPTool {
+        + execute(params): Result
+    }
+
+    class TradeTool {
+        + buy(symbol, amount): Dict
+        + sell(symbol, amount): Dict
+        - _position_lock(signature): Lock
+        --
+        自动检测市场规则
+        文件锁保证原子性
+    }
+
+    class PriceTool {
+        + get_price_local(symbol, date): Dict
+        + get_open_prices(date, symbols): Dict
+        --
+        从merged.jsonl读取
+        支持US和CN市场
+    }
+
+    class SearchTool {
+        + get_information(query): str
+        --
+        调用Jina AI API
+    }
+
+    class MathTool {
+        + calculate(expression): float
+    }
+}
+
+package "tools (Utilities)" {
+    class GeneralTools {
+        + get_config_value(key): Any
+        + write_config_value(key, value): None
+        + extract_conversation(response, mode): str
+        + extract_tool_messages(response): List
+        - _resolve_runtime_env_path(): Path
+        --
+        管理共享运行时配置
+        使用文件锁保证并发安全
+    }
+
+    class PriceTools {
+        + get_open_prices(date, symbols, market): Dict
+        + get_yesterday_open_and_close_price(...): Tuple
+        + get_today_init_position(date, signature): Dict
+        + get_latest_position(signature): Tuple
+        + is_trading_day(date, market): bool
+        + add_no_trade_record(date, signature): None
+        --
+        价格数据查询和处理
+        持仓文件读写
+    }
+
+    class ResultTools {
+        + calculate_performance(signature): Dict
+        + analyze_trades(signature): Dict
+        --
+        性能指标计算
+        交易分析
+    }
+}
+
+package "prompts" {
+    class AgentPrompt {
+        + STOP_SIGNAL: str
+        + all_nasdaq_100_symbols: List[str]
+        + all_sse_50_symbols: List[str]
+        + get_agent_system_prompt(date, signature, market, symbols): str
+        --
+        动态生成系统提示词
+        包含当前价格和持仓
+    }
+}
+
+' 继承关系
+BaseAgent <|-- BaseAgentAStock
+ChatOpenAI <|-- DeepSeekChatOpenAI
+
+' 组合关系
+BaseAgent *-- DeepSeekChatOpenAI : uses (for DeepSeek models)
+BaseAgent o-- "1" MultiServerMCPClient : client
+BaseAgent o-- "1..*" MCPTool : tools
+BaseAgent o-- "1" ChatOpenAI : model
+
+' 实现关系
+MCPTool <|.. TradeTool
+MCPTool <|.. PriceTool
+MCPTool <|.. SearchTool
+MCPTool <|.. MathTool
+
+' 依赖关系
+MainModule ..> AgentRegistry : uses
+MainModule ..> BaseAgent : creates
+MainModule ..> BaseAgentAStock : creates
+BaseAgent ..> GeneralTools : uses
+BaseAgent ..> PriceTools : uses
+BaseAgent ..> AgentPrompt : uses
+BaseAgentAStock ..> AgentPrompt : uses
+TradeTool ..> PriceTools : uses
+TradeTool ..> GeneralTools : uses
+PriceTool ..> PriceTools : uses
+
+note top of BaseAgent
+  核心交易Agent
+  - 支持US/CN双市场
+  - MCP工具驱动执行
+  - 完整历史回放能力
+  - 自动持仓管理
+end note
+
+note top of BaseAgentAStock
+  A股专用Agent
+  - 强制CN市场
+  - 上证50默认股票池
+  - T+1结算
+  - 100股手数验证
+end note
+
+note right of DeepSeekChatOpenAI
+  处理DeepSeek API特殊性
+  tool_calls.args可能是
+  JSON字符串而非dict
+end note
+
+note bottom of TradeTool
+  交易执行核心
+  - 自动市场规则检测
+  - 文件锁保证并发安全
+  - 持仓原子性更新
+end note
+
+note bottom of GeneralTools
+  共享配置管理
+  使用RUNTIME_ENV_PATH
+  文件存储关键运行时信息:
+  - SIGNATURE
+  - TODAY_DATE
+  - MARKET
+  - IF_TRADE
+end note
+
+@enduml
