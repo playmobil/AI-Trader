@@ -1,4 +1,3 @@
-CLAUDE.md
 logs/
 data/*.json
 data/*.jsonl
@@ -106,6 +105,21 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
+
 # claude
 .claude/
 CLAUDE.md
+
+# Documentation
+CLAUDE.md
+plan.md
+*_plan.md
+design.md
+deprecated/
+*_SUCCESS.md
+test_*.py
+*.backup
+/data/*_test_agent/
+*__test*
+*_test.json
+

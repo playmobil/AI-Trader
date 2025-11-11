@@ -1,3 +1,5 @@
+from tools.general_tools import get_config_value, write_config_value
+from prompts.agent_prompt import all_nasdaq_100_symbols
 import asyncio
 import json
 import os
@@ -8,9 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from prompts.agent_prompt import all_nasdaq_100_symbols
 # 导入工具和提示
-from tools.general_tools import get_config_value, write_config_value
 
 # Agent类映射表 - 用于动态导入和实例化
 AGENT_REGISTRY = {
@@ -26,6 +26,10 @@ AGENT_REGISTRY = {
         "module": "agent.base_agent_astock.base_agent_astock",
         "class": "BaseAgentAStock"
     },
+    "BaseAgentCrypto": {
+        "module": "agent.base_agent_crypto.base_agent_crypto",
+        "class": "BaseAgentCrypto"
+    }
 }
 
 
@@ -45,7 +49,8 @@ def get_agent_class(agent_type):
     """
     if agent_type not in AGENT_REGISTRY:
         supported_types = ", ".join(AGENT_REGISTRY.keys())
-        raise ValueError(f"❌ Unsupported agent type: {agent_type}\n" f"   Supported types: {supported_types}")
+        raise ValueError(
+            f"❌ Unsupported agent type: {agent_type}\n" f"   Supported types: {supported_types}")
 
     agent_info = AGENT_REGISTRY[agent_type]
     module_path = agent_info["module"]
@@ -57,12 +62,15 @@ def get_agent_class(agent_type):
 
         module = importlib.import_module(module_path)
         agent_class = getattr(module, class_name)
-        print(f"✅ Successfully loaded Agent class: {agent_type} (from {module_path})")
+        print(
+            f"✅ Successfully loaded Agent class: {agent_type} (from {module_path})")
         return agent_class
     except ImportError as e:
-        raise ImportError(f"❌ Unable to import agent module {module_path}: {e}")
+        raise ImportError(
+            f"❌ Unable to import agent module {module_path}: {e}")
     except AttributeError as e:
-        raise AttributeError(f"❌ Class {class_name} not found in module {module_path}: {e}")
+        raise AttributeError(
+            f"❌ Class {class_name} not found in module {module_path}: {e}")
 
 
 def load_config(config_path=None):
@@ -120,7 +128,15 @@ async def main(config_path=None):
     # 从agent_type自动检测市场（BaseAgentAStock始终使用中国市场）
     if agent_type == "BaseAgentAStock":
         market = "cn"
-    print(f"🌍 Market type: {'A-shares (China)' if market == 'cn' else 'US stocks'}")
+    elif agent_type == "BaseAgentCrypto":
+        market = "crypto"
+
+    if market == "crypto":
+        print(f"🌍 Market type: Cryptocurrency (24/7 trading)")
+    elif market == "cn":
+        print(f"🌍 Market type: A-shares (China)")
+    else:
+        print(f"🌍 Market type: US stocks")
 
     # 从配置文件获取日期范围
     INIT_DATE = config["date_range"]["init_date"]
@@ -129,10 +145,12 @@ async def main(config_path=None):
     # 环境变量可以覆盖配置文件中的日期
     if os.getenv("INIT_DATE"):
         INIT_DATE = os.getenv("INIT_DATE")
-        print(f"⚠️  Using environment variable to override INIT_DATE: {INIT_DATE}")
+        print(
+            f"⚠️  Using environment variable to override INIT_DATE: {INIT_DATE}")
     if os.getenv("END_DATE"):
         END_DATE = os.getenv("END_DATE")
-        print(f"⚠️  Using environment variable to override END_DATE: {END_DATE}")
+        print(
+            f"⚠️  Using environment variable to override END_DATE: {END_DATE}")
 
     # 验证日期范围
     # 支持 YYYY-MM-DD 和 YYYY-MM-DD HH:MM:SS 两种格式
@@ -140,18 +158,19 @@ async def main(config_path=None):
         INIT_DATE_obj = datetime.strptime(INIT_DATE, "%Y-%m-%d %H:%M:%S")
     else:
         INIT_DATE_obj = datetime.strptime(INIT_DATE, "%Y-%m-%d")
-    
+
     if ' ' in END_DATE:
         END_DATE_obj = datetime.strptime(END_DATE, "%Y-%m-%d %H:%M:%S")
     else:
         END_DATE_obj = datetime.strptime(END_DATE, "%Y-%m-%d")
-    
+
     if INIT_DATE_obj > END_DATE_obj:
         print("❌ INIT_DATE is greater than END_DATE")
         exit(1)
 
     # 从配置文件获取模型列表（仅选择已启用的模型）
-    enabled_models = [model for model in config["models"] if model.get("enabled", True)]
+    enabled_models = [model for model in config["models"]
+                      if model.get("enabled", True)]
 
     # 获取agent配置
     agent_config = config.get("agent_config", {})
@@ -177,8 +196,8 @@ async def main(config_path=None):
         model_name = model_config.get("name", "unknown")
         basemodel = model_config.get("basemodel")
         signature = model_config.get("signature")
-        openai_base_url = model_config.get("openai_base_url",None)
-        openai_api_key = model_config.get("openai_api_key",None)
+        openai_base_url = model_config.get("openai_base_url", None)
+        openai_api_key = model_config.get("openai_api_key", None)
 
         # 验证必需字段
         if not basemodel:
@@ -202,7 +221,8 @@ async def main(config_path=None):
         log_path = log_config.get("log_path", "./data/agent_data")
 
         # 检查持仓文件以确定是否为全新开始
-        position_file = project_root / log_path / signature / "position" / "position.jsonl"
+        position_file = project_root / log_path / \
+            signature / "position" / "position.jsonl"
 
         # 如果持仓文件不存在，重置配置从INIT_DATE开始
         if not position_file.exists():
@@ -211,7 +231,8 @@ async def main(config_path=None):
             runtime_env_path = _resolve_runtime_env_path()
             if os.path.exists(runtime_env_path):
                 os.remove(runtime_env_path)
-                print(f"🔄 Position file not found, cleared config for fresh start from {INIT_DATE}")
+                print(
+                    f"🔄 Position file not found, cleared config for fresh start from {INIT_DATE}")
 
         # 将配置值写入共享配置文件（来自.env的RUNTIME_ENV_PATH）
         write_config_value("SIGNATURE", signature)
@@ -219,12 +240,17 @@ async def main(config_path=None):
         write_config_value("MARKET", market)
         write_config_value("LOG_PATH", log_path)
 
-        print(f"✅ Runtime config initialized: SIGNATURE={signature}, MARKET={market}")
+        print(
+            f"✅ Runtime config initialized: SIGNATURE={signature}, MARKET={market}")
 
         # 根据agent类型和市场选择股票代码
         # BaseAgentAStock有自己的默认代码，仅为BaseAgent设置
-        if agent_type == "BaseAgentAStock":
-            stock_symbols = None  # 让BaseAgentAStock使用其默认的上证50
+
+        if agent_type == "BaseAgentCrypto":
+            stock_symbols = None  # Crypto agent uses its own crypto_symbols
+        elif agent_type == "BaseAgentAStock":
+            stock_symbols = None  # Let BaseAgentAStock use its default SSE 50
+
         elif market == "cn":
             from prompts.agent_prompt import all_sse_50_symbols
 
@@ -234,19 +260,34 @@ async def main(config_path=None):
 
         try:
             # 动态创建Agent实例
-            agent = AgentClass(
-                signature=signature,
-                basemodel=basemodel,
-                stock_symbols=stock_symbols,
-                log_path=log_path,
-                max_steps=max_steps,
-                max_retries=max_retries,
-                base_delay=base_delay,
-                initial_cash=initial_cash,
-                init_date=INIT_DATE,
-                openai_base_url=openai_base_url,
-                openai_api_key=openai_api_key
-            )
+            # Crypto agents have different parameter requirements
+            if agent_type == "BaseAgentCrypto":
+                agent = AgentClass(
+                    signature=signature,
+                    basemodel=basemodel,
+                    log_path=log_path,
+                    max_steps=max_steps,
+                    max_retries=max_retries,
+                    base_delay=base_delay,
+                    initial_cash=initial_cash,
+                    init_date=INIT_DATE,
+                    openai_base_url=openai_base_url,
+                    openai_api_key=openai_api_key
+                )
+            else:
+                agent = AgentClass(
+                    signature=signature,
+                    basemodel=basemodel,
+                    stock_symbols=stock_symbols,
+                    log_path=log_path,
+                    max_steps=max_steps,
+                    max_retries=max_retries,
+                    base_delay=base_delay,
+                    initial_cash=initial_cash,
+                    init_date=INIT_DATE,
+                    openai_base_url=openai_base_url,
+                    openai_api_key=openai_api_key
+                )
 
             print(f"✅ {agent_type} instance created successfully: {agent}")
 
@@ -258,15 +299,34 @@ async def main(config_path=None):
 
             # 显示最终持仓摘要
             summary = agent.get_position_summary()
+
             # 从agent的实际市场获取货币符号（更准确）
-            currency_symbol = "¥" if agent.market == "cn" else "$"
+
+            if agent.market == "crypto":
+                currency_symbol = "USDT"
+            elif agent.market == "cn":
+                currency_symbol = "¥"
+            else:
+                currency_symbol = "$"
+
             print(f"📊 Final position summary:")
             print(f"   - Latest date: {summary.get('latest_date')}")
             print(f"   - Total records: {summary.get('total_records')}")
-            print(f"   - Cash balance: {currency_symbol}{summary.get('positions', {}).get('CASH', 0):,.2f}")
+            print(
+                f"   - Cash balance: {currency_symbol}{summary.get('positions', {}).get('CASH', 0):,.2f}")
+
+            # Show crypto positions if this is a crypto agent
+            if agent.market == "crypto" and hasattr(agent, 'crypto_symbols'):
+                crypto_positions = {k: v for k, v in summary.get(
+                    'positions', {}).items() if k.endswith('-USDT') and v > 0}
+                if crypto_positions:
+                    print(f"   - Crypto positions:")
+                    for symbol, amount in crypto_positions.items():
+                        print(f"     • {symbol}: {amount}")
 
         except Exception as e:
-            print(f"❌ Error processing model {model_name} ({signature}): {str(e)}")
+            print(
+                f"❌ Error processing model {model_name} ({signature}): {str(e)}")
             print(f"📋 Error details: {e}")
             # 可以选择继续处理下一个模型，或退出
             # continue  # 继续处理下一个模型
