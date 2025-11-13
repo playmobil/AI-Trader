@@ -12,10 +12,10 @@
 **描述**: 展示系统整体架构，包括入口层、Agent层、MCP工具链、数据层和外部服务的关系。
 
 **关键要点**:
-- main.py动态加载Agent
-- BaseAgent vs BaseAgentAStock vs BaseAgentCrypto
-- MCP工具的4个核心服务
-- US/CN/Crypto三大市场数据隔离
+- main.py动态加载BaseAgentAStock
+- A股专用Agent (market="cn")
+- MCP工具的4个核心服务 (端口8000-8003)
+- A股数据独立存储 (data/A_stock/, agent_data_astock/)
 
 ---
 
@@ -24,13 +24,13 @@
 
 **预览**: [点击查看在线版本](http://www.plantuml.com/plantuml/uml/trading_flow.puml)
 
-**描述**: 完整的交易执行流程，从程序启动到交易完成的全过程。
+**描述**: 完整的A股交易执行流程，从程序启动到交易完成的全过程。
 
 **关键阶段**:
-1. 初始化阶段 - 加载配置和连接服务
-2. 数据准备阶段 - 检查持仓和获取交易日
-3. 交易执行阶段 - AI推理和工具调用循环
-4. 结果输出阶段 - 生成交易摘要
+1. 初始化阶段 - 加载A股配置和连接服务
+2. 数据准备阶段 - 检查A股持仓和获取交易日
+3. A股交易执行阶段 - AI推理和工具调用循环 (T+1规则)
+4. 结果输出阶段 - 生成A股交易摘要 (¥显示)
 
 ---
 
@@ -39,15 +39,18 @@
 
 **预览**: [点击查看在线版本](http://www.plantuml.com/plantuml/uml/class_diagram.puml)
 
-**描述**: 核心类的结构、属性、方法和继承关系。
+**描述**: 核心类的结构、属性、方法和关系。
 
 **主要类**:
-- `BaseAgent` - 通用交易Agent (支持US/CN/Crypto)
-- `BaseAgentAStock` - A股专用Agent (继承自BaseAgent)
-- `BaseAgentCrypto` - 加密货币专用Agent (继承自BaseAgent)
+- `BaseAgentAStock` - A股交易Agent (核心类)
+  - market = "cn"
+  - initial_cash = ¥100,000
+  - 上证50股票池
+  - T+1结算规则
 - `DeepSeekChatOpenAI` - API适配器
 - MCP工具类 - TradeTool, PriceTool, SearchTool, MathTool
 - 工具类 - GeneralTools, PriceTools, ResultTools
+- `AgentPromptAStock` - A股提示词管理
 
 ---
 
@@ -56,13 +59,13 @@
 
 **预览**: [点击查看在线版本](http://www.plantuml.com/plantuml/uml/data_flow.puml)
 
-**描述**: 数据在系统中的流动路径和存储结构。
+**描述**: A股数据在系统中的流动路径和存储结构。
 
 **数据类型**:
-- **配置数据**: .env → configs/*.json → runtime_env.json
-- **市场数据**: Alpha Vantage/Tushare/Binance → merged.jsonl
-- **持仓数据**: position.jsonl (追加写入，三大市场独立存储)
-- **日志数据**: log/{date}/log.jsonl (AI推理过程，三大市场独立存储)
+- **配置数据**: .env → configs/astock_config.json → runtime_env.json (MARKET="cn")
+- **A股市场数据**: Tushare API → A_stock/merged.jsonl (上证50成分股)
+- **A股持仓数据**: agent_data_astock/{signature}/position/position.jsonl (追加写入，文件锁)
+- **A股日志数据**: agent_data_astock/{signature}/log/{date}/log.jsonl (中文推理过程)
 
 ---
 
@@ -71,15 +74,15 @@
 
 **预览**: [点击查看在线版本](http://www.plantuml.com/plantuml/uml/mcp_interaction.puml)
 
-**描述**: MCP工具的详细交互流程，展示每个工具如何工作。
+**描述**: A股MCP工具的详细交互流程，展示每个工具如何工作。
 
 **工具示例**:
-- **价格查询**: 从merged.jsonl读取OHLCV数据
-- **信息搜索**: 调用Jina AI API获取市场信息
-- **买入交易**: 验证条件、更新持仓(带文件锁) - US股票示例
-- **卖出交易**: 特别展示A股100股手数验证
-- **加密货币交易**: BTC-USDT交易，展示小数精度和7×24小时交易
-- **数学计算**: 安全的表达式计算
+- **A股价格查询**: 从A_stock/merged.jsonl读取OHLCV数据 (600519.SH示例)
+- **A股信息搜索**: 调用Jina AI API获取中文市场信息 ("贵州茅台最新财报")
+- **A股买入失败**: 展示现金不足场景 (600519.SH 200股)
+- **A股买入成功**: 验证100股手数、更新持仓(带文件锁) - 600036.SH示例
+- **A股卖出交易**: 完整展示100股手数验证和T+1规则
+- **数学计算**: 安全的表达式计算 (收益率等)
 
 ---
 
@@ -119,15 +122,15 @@ bash generate_diagrams.sh both
 | 关心的问题 | 推荐查看 |
 |----------|---------|
 | 系统整体结构是什么？ | → 系统架构图 |
-| 交易是如何执行的？ | → 交易流程序列图 |
+| A股交易是如何执行的？ | → 交易流程序列图 |
 | 如何开发新功能？ | → 核心类图 |
-| 数据存储在哪里？ | → 数据流图 |
+| A股数据存储在哪里？ | → 数据流图 |
 | MCP工具如何工作？ | → MCP工具交互图 |
-| 三大市场有什么区别？ | → 系统架构图 + MCP工具交互图 |
-| US股票和A股有什么区别？ | → MCP工具交互图 (卖出A股示例) |
-| 加密货币交易有何特点？ | → MCP工具交互图 (加密货币示例) + 数据流图 |
-| 如何添加新的Agent？ | → 核心类图 |
-| 持仓文件格式是什么？ | → 数据流图 |
+| A股交易规则是什么？ | → MCP工具交互图 (T+1、100股手数) |
+| 100股手数如何验证？ | → MCP工具交互图 (买入/卖出示例) |
+| 文件锁如何保证并发安全？ | → MCP工具交互图 (交易流程) |
+| BaseAgentAStock有哪些属性？ | → 核心类图 |
+| A股持仓文件格式是什么？ | → 数据流图 |
 
 ---
 
@@ -139,8 +142,9 @@ bash generate_diagrams.sh both
 
 ---
 
-**最后更新**: 2025-11-09
+**最后更新**: 2025-11-13
 **维护**: AI-Trader Team
+**架构**: 专注A股市场
 
 ---
 

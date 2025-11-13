@@ -1,37 +1,47 @@
-@startuml AI-Trader Trading Flow
+@startuml AI-Trader Trading Flow (A股专版)
 !theme plain
 skinparam sequenceMessageAlign center
 skinparam backgroundColor #FFFFFF
 
-title AI-Trader交易流程序列图
+title AI-Trader A股交易流程序列图
 
 actor "用户" as User
 participant "main.py" as Main
-participant "配置文件" as Config
-participant "BaseAgent" as Agent
-participant "MCP工具链" as MCP
+participant "configs/\nastock_config.json" as Config
+participant "BaseAgentAStock\n(A股交易Agent)" as Agent
+participant "MCP工具链\n(A股专用)" as MCP
 participant "AI模型\n(LLM)" as LLM
-participant "数据存储" as Data
+participant "A股数据存储\n(agent_data_astock/)" as Data
+participant "Tushare\n(A股数据源)" as Tushare
 
 == 初始化阶段 ==
-User -> Main: 启动程序\npython main.py [config]
+User -> Main: 启动A股交易\npython main.py configs/astock_config.json
 activate Main
 
-Main -> Config: 加载配置文件
+Main -> Config: 加载A股配置文件
 activate Config
-Config --> Main: 返回配置信息\n(agent_type, models, date_range)
+Config --> Main: 返回A股配置\n(agent_type="BaseAgentAStock",\nmarket="cn", date_range)
 deactivate Config
 
-Main -> Main: 根据agent_type\n动态加载Agent类
-note right: AGENT_REGISTRY查找
+Main -> Main: 检测agent_type\n自动设置market="cn"
+note right: AGENT_REGISTRY查找\n"BaseAgentAStock"
 
-Main -> Agent: 创建Agent实例\n(signature, basemodel, stock_symbols)
+Main -> Agent: 创建BaseAgentAStock实例\n(signature, basemodel,\nstock_symbols=上证50)
 activate Agent
 
-Agent -> MCP: 初始化MCP客户端
+note right of Agent
+  **A股Agent特性**
+  - market = "cn"
+  - initial_cash = ¥100,000
+  - 上证50股票池
+  - T+1结算规则
+  - 100股手数验证
+end note
+
+Agent -> MCP: 初始化MCP客户端\n连接A股工具服务
 activate MCP
-MCP -> MCP: 启动工具服务\n(trade, price, search, math)
-MCP --> Agent: 返回可用工具列表
+MCP -> MCP: 启动A股工具服务\n- tool_trade (Port 8002)\n- tool_get_price_local (Port 8003)\n- tool_jina_search (Port 8001)\n- tool_math (Port 8000)
+MCP --> Agent: 返回可用工具列表\n[buy, sell, get_price_local,\nget_information, calculate]
 deactivate MCP
 
 Agent -> LLM: 创建AI模型连接\n(ChatOpenAI/DeepSeekChatOpenAI)
@@ -43,128 +53,177 @@ Agent --> Main: 初始化完成
 deactivate Agent
 
 == 数据准备阶段 ==
-Main -> Agent: 获取交易日期列表\nget_trading_dates()
+Main -> Agent: 获取A股交易日期列表\nget_trading_dates()
 activate Agent
 
-Agent -> Data: 检查position.jsonl
+Agent -> Data: 检查A股持仓文件\nagent_data_astock/{signature}/\nposition/position.jsonl
 activate Data
 alt 持仓文件存在
     Data --> Agent: 返回最后交易日期
 else 持仓文件不存在
-    Data --> Agent: 无记录
-    Agent -> Agent: 注册新Agent\n创建初始持仓
-    Agent -> Data: 写入初始持仓\n{CASH: 10000/100000}
+    Data --> Agent: 无A股交易记录
+    Agent -> Agent: 注册新A股Agent\n创建初始持仓
+    Agent -> Data: 写入初始A股持仓\n{CASH: 100000.0}\n(人民币计价)
+    note right: 初始资金¥100,000
 end
 
-Agent -> Data: 读取merged.jsonl\n验证交易日
-Data --> Agent: 有效交易日列表
-deactivate Data
+Agent -> Tushare: 读取A股价格数据\ndata/A_stock/merged.jsonl
+activate Tushare
+Tushare --> Agent: 上证50股票价格数据\n验证A股交易日
+deactivate Tushare
 
-Agent --> Main: 返回待处理日期列表
+Agent --> Main: 返回A股待处理日期列表
+deactivate Data
 deactivate Agent
 
-== 交易执行阶段 ==
-loop 每个交易日
+== A股交易执行阶段 ==
+loop 每个A股交易日
     Main -> Agent: run_trading_session(date)
     activate Agent
 
-    Agent -> Agent: 更新系统提示词\n(包含当日价格、持仓)
+    Agent -> Agent: 更新A股系统提示词\n(包含当日A股价格、持仓、\n中文市场分析提示)
+    note right: 使用AgentPromptAStock
 
-    Agent -> Data: 获取当日开盘价
+    Agent -> Data: 获取A股当日开盘价\n(600XXX.SH/000XXX.SZ格式)
     activate Data
-    Data --> Agent: 价格数据
+    Data --> Agent: A股价格数据\n(人民币计价)
     deactivate Data
 
     Agent -> Agent: 创建Agent执行器\ncreate_agent(model, tools, prompt)
 
-    loop 推理循环 (最多max_steps次)
-        Agent -> LLM: 发送消息\n"请分析并更新持仓"
+    loop AI推理循环 (最多max_steps次)
+        Agent -> LLM: 发送消息\n"请分析A股市场并更新持仓"
         activate LLM
 
-        LLM -> LLM: 思考分析
-        note right: AI自主决策:\n- 查看市场信息\n- 分析价格趋势\n- 制定交易策略
+        LLM -> LLM: A股市场分析
+        note right: AI自主决策:\n- 查看A股市场信息\n- 分析中国股市趋势\n- 制定A股交易策略\n- 考虑T+1结算规则
 
-        LLM -> MCP: 调用工具\n(search/get_price/buy/sell)
+        LLM -> MCP: 调用A股工具
         activate MCP
 
-        alt 搜索工具
-            MCP -> MCP: tool_jina_search
-            MCP --> LLM: 返回市场信息
-        else 价格查询
-            MCP -> Data: 查询价格
+        alt A股信息搜索
+            MCP -> MCP: tool_jina_search\n(支持中文查询)
+            MCP --> LLM: 返回A股市场信息\n(财报、公告、新闻)
+        else A股价格查询
+            MCP -> Data: 查询A股价格\nget_price_local(symbol, date)
             activate Data
-            Data --> MCP: 返回价格数据
+            note right: 读取A_stock/merged.jsonl\n识别.SH/.SZ后缀
+            Data --> MCP: 返回A股价格数据
             deactivate Data
-            MCP --> LLM: 返回价格
-        else 买入交易
-            MCP -> MCP: 验证交易规则\n(现金充足、手数验证)
-            MCP -> Data: 更新持仓\n(加锁写入)
+            MCP --> LLM: 返回价格(CNY)
+        else A股买入交易
+            MCP -> MCP: 检测市场类型\n(.SH/.SZ后缀 -> A股)
+            MCP -> MCP: 验证A股交易规则\n✓ 100股手数验证\n✓ 现金充足性检查\n✓ T+1结算规则
+            note right: amount % 100 == 0
+            MCP -> MCP: 获取文件锁\n_position_lock(signature)
+            MCP -> Data: 读取当前A股持仓
             activate Data
+            Data --> MCP: 当前持仓数据
+            MCP -> MCP: 计算新持仓\n股票数量 += amount\nCASH -= amount * open_price
+            MCP -> Data: 写入新持仓记录\n(追加模式, append-only)
             Data --> MCP: 持仓已更新
             deactivate Data
-            MCP --> LLM: 交易成功
-        else 卖出交易
-            MCP -> MCP: 验证持仓数量
-            MCP -> Data: 更新持仓
+            MCP -> MCP: 释放文件锁
+            MCP --> LLM: A股买入成功\n(CNY计价)
+        else A股卖出交易
+            MCP -> MCP: 检测市场类型\n(.SH/.SZ后缀 -> A股)
+            MCP -> MCP: 验证A股持仓数量\n验证100股手数
+            MCP -> MCP: 获取文件锁
+            MCP -> Data: 读取当前A股持仓
             activate Data
+            Data --> MCP: 当前持仓数据
+            MCP -> MCP: 计算新持仓\n股票数量 -= amount\nCASH += amount * open_price
+            MCP -> Data: 写入新持仓记录
             Data --> MCP: 持仓已更新
             deactivate Data
-            MCP --> LLM: 交易成功
+            MCP -> MCP: 释放文件锁
+            MCP --> LLM: A股卖出成功\n(CNY计价)
+        else 数学计算
+            MCP -> MCP: calculate(expression)\n收益率计算等
+            MCP --> LLM: 计算结果
         end
 
         deactivate MCP
 
-        LLM --> Agent: 返回响应
+        LLM --> Agent: 返回A股交易响应\n(中文推理结果)
         deactivate LLM
 
-        Agent -> Data: 记录日志
+        Agent -> Data: 记录A股交易日志\n按日期分目录存储
         activate Data
+        note right: agent_data_astock/{signature}/\nlog/{date}/log.jsonl\n包含中文分析过程
         Data --> Agent: 日志已保存
         deactivate Data
 
-        alt 收到停止信号
+        alt 收到A股交易停止信号
             Agent -> Agent: 检测到<FINISH_SIGNAL>
-            note right: 交易决策完成
+            note right: A股交易决策完成
             Agent -> Agent: 退出循环
         else 达到最大步数
             Agent -> Agent: 强制结束
         end
     end
 
-    alt 发生了交易
-        Agent -> Data: 确认持仓已更新
+    alt 发生了A股交易
+        Agent -> Data: 确认A股持仓已更新
         activate Data
-        Data --> Agent: 确认
+        Data --> Agent: 确认\n(文件锁保证原子性)
         deactivate Data
-    else 未发生交易
-        Agent -> Data: 添加无交易记录\n(保持持仓不变)
+    else 未发生A股交易
+        Agent -> Data: 添加无交易记录\n(保持A股持仓不变)
         activate Data
         Data --> Agent: 记录已添加
         deactivate Data
     end
 
-    Agent --> Main: 当日交易完成
+    Agent --> Main: A股当日交易完成
     deactivate Agent
 end
 
 == 结果输出阶段 ==
-Main -> Agent: 获取持仓摘要\nget_position_summary()
+Main -> Agent: 获取A股持仓摘要\nget_position_summary()
 activate Agent
-Agent -> Data: 读取最终持仓
+Agent -> Data: 读取最终A股持仓
 activate Data
-Data --> Agent: 持仓数据
+Data --> Agent: A股持仓数据\n(包含所有上证50股票持仓)
 deactivate Data
-Agent --> Main: 返回摘要信息
+Agent --> Main: 返回A股摘要信息
 deactivate Agent
 
-Main -> User: 显示交易结果\n(日期、记录数、现金余额)
+Main -> User: 显示A股交易结果\n(日期、记录数、现金余额¥)
+note right: 货币符号显示为 ¥
 
 deactivate Main
 
-note over User, Data
-  完整交易周期结束
-  所有交易记录已持久化
-  可用于性能分析
+note over User, Tushare
+  **A股交易周期结束**
+  - 所有A股交易记录已持久化
+  - T+1结算规则已遵守
+  - 100股手数验证完成
+  - 人民币计价
+  - 可用于绩效分析
+end note
+
+note bottom of Data
+  **A股持仓文件特点**
+  - 路径: agent_data_astock/{signature}/position/
+  - 格式: position.jsonl
+  - 追加写入模式
+  - 文件锁保证原子性
+  - 记录完整A股交易历史
+  - 人民币计价
+end note
+
+note bottom of MCP
+  **A股交易核心规则**
+  1. 市场检测 (CN A股)
+  2. 规则验证
+     - T+1结算
+     - 100股为一手
+     - 人民币计价
+  3. 文件锁保证并发安全
+  4. 原子性更新持仓
+  5. 完整记录交易历史
+  6. 股票代码格式: XXXXXX.SH/SZ
 end note
 
 @enduml

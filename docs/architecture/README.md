@@ -9,81 +9,79 @@
 
 **包含内容**:
 - 入口层 (main.py)
-- Agent层 (BaseAgent, BaseAgentAStock, BaseAgentCrypto)
+- Agent层 (BaseAgentAStock - A股交易Agent)
 - MCP工具链 (trade, price, search, math)
-- 数据层 (US股票、A股、加密货币数据)
+- 数据层 (A股数据 - data/A_stock/)
 - 工具层 (general_tools, price_tools, result_tools)
-- 外部服务 (OpenAI, Jina AI, Alpha Vantage, Tushare, Binance)
+- 外部服务 (OpenAI, Jina AI, Tushare)
 
 **适用场景**:
 - 快速了解系统整体结构
 - 理解各模块职责划分
-- 查看三大市场数据流向
+- 查看A股市场数据流向
 
 ### 2. 交易流程图 (trading_flow.puml)
-**用途**: 展示从启动到完成交易的完整流程序列图
+**用途**: 展示A股交易从启动到完成的完整流程序列图
 
 **流程阶段**:
-1. 初始化阶段 - 加载配置、创建Agent、连接MCP
-2. 数据准备阶段 - 检查持仓、获取交易日列表
-3. 交易执行阶段 - AI推理循环、工具调用、持仓更新
-4. 结果输出阶段 - 生成交易摘要
+1. 初始化阶段 - 加载A股配置、创建BaseAgentAStock、连接MCP
+2. 数据准备阶段 - 检查A股持仓、获取交易日列表
+3. A股交易执行阶段 - AI推理循环、工具调用、持仓更新
+4. 结果输出阶段 - 生成A股交易摘要
 
 **适用场景**:
-- 理解交易执行的完整流程
-- 调试交易问题
-- 了解AI决策过程
+- 理解A股交易执行的完整流程
+- 调试A股交易问题
+- 了解AI决策过程和T+1规则
 
 ### 3. 类图 (class_diagram.puml)
 **用途**: 展示核心类的结构、属性、方法和关系
 
 **主要类**:
-- BaseAgent - 通用交易Agent (支持US/CN/Crypto)
-- BaseAgentAStock - A股专用Agent
-- BaseAgentCrypto - 加密货币专用Agent
+- BaseAgentAStock - A股交易Agent (核心)
 - DeepSeekChatOpenAI - DeepSeek API适配器
 - MCP工具类 (TradeTool, PriceTool, SearchTool, MathTool)
 - 工具类 (GeneralTools, PriceTools, ResultTools)
-- AgentPrompt - 提示词管理
+- AgentPromptAStock - A股提示词管理
 
 **适用场景**:
 - 开发新功能
 - 理解类的设计
-- 查看继承和依赖关系
-- 了解三种Agent的差异
+- 查看依赖关系
+- 了解A股Agent的特性
 
 ### 4. 数据流图 (data_flow.puml)
-**用途**: 展示数据如何在系统中流动
+**用途**: 展示A股数据如何在系统中流动
 
 **数据类型**:
-- 配置数据流 (.env, configs/*.json, runtime_env.json)
-- 市场数据流 (Alpha Vantage, Tushare, Binance -> merged.jsonl)
-- 持仓数据流 (position.jsonl - US/CN/Crypto)
-- 日志数据流 (log.jsonl - US/CN/Crypto)
+- 配置数据流 (.env, configs/astock_config.json, runtime_env.json)
+- A股市场数据流 (Tushare API -> A_stock/merged.jsonl)
+- A股持仓数据流 (agent_data_astock/position.jsonl)
+- A股日志数据流 (agent_data_astock/log/{date}/log.jsonl)
 
 **适用场景**:
-- 理解数据存储结构
-- 追踪三大市场数据来源和去向
+- 理解A股数据存储结构
+- 追踪A股数据来源和去向
 - 优化数据访问性能
-- 了解加密货币数据特点
+- 了解T+1交易规则下的数据管理
 
 ### 5. MCP工具交互图 (mcp_interaction.puml)
-**用途**: 详细展示MCP工具的工作机制
+**用途**: 详细展示A股MCP工具的工作机制
 
 **展示内容**:
-- MCP工具初始化流程
-- 价格查询工具示例
-- 信息搜索工具示例
-- 买入交易工具示例 (US股票)
-- 卖出交易工具示例 (A股)
-- 加密货币交易示例 (BTC-USDT)
+- MCP工具初始化流程 (4个服务端口)
+- A股价格查询示例 (600519.SH - 贵州茅台)
+- A股信息搜索示例 (中文查询)
+- A股买入失败示例 (现金不足)
+- A股买入成功示例 (600036.SH - 100股)
+- A股卖出示例 (完整交易流程)
 - 数学计算工具示例
 
 **适用场景**:
 - 理解MCP协议如何工作
 - 开发新的MCP工具
-- 调试工具调用问题
-- 了解三大市场交易规则差异
+- 调试A股工具调用问题
+- 了解A股交易规则 (T+1、100股手数、文件锁)
 
 ## 🔧 如何查看架构图
 

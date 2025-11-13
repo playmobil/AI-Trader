@@ -1,8 +1,8 @@
-@startuml AI-Trader Data Flow
+@startuml AI-Trader Data Flow (A股专版)
 !theme plain
 skinparam backgroundColor #FFFFFF
 
-title AI-Trader数据流图
+title AI-Trader数据流图 - A股市场
 
 skinparam component {
     BackgroundColor<<config>> #E1F5FE
@@ -16,110 +16,83 @@ skinparam component {
 ' 配置数据流
 package "配置数据流 Configuration Flow" {
     file ".env" as ENV <<config>>
-    file "configs/*.json" as ConfigJSON <<config>>
+    file "configs/astock_config.json" as ConfigJSON <<config>>
     file "runtime_env.json" as RuntimeEnv <<runtime>>
 
     note right of ENV
       ENV : OPENAI_API_KEY
       ENV : OPENAI_API_BASE
-      ENV : ALPHAADVANTAGE_API_KEY
       ENV : JINA_API_KEY
       ENV : TUSHARE_TOKEN
-      ENV : BINANCE_API_KEY
       ENV : RUNTIME_ENV_PATH
       ENV : MATH_HTTP_PORT=8000
-      ENV : ...
+      ENV : SEARCH_HTTP_PORT=8001
+      ENV : TRADE_HTTP_PORT=8002
+      ENV : GETPRICE_HTTP_PORT=8003
     end note
 
     note right of ConfigJSON
-      ConfigJSON : agent_type
-      ConfigJSON : market
+      ConfigJSON : agent_type = "BaseAgentAStock"
+      ConfigJSON : market = "cn"
       ConfigJSON : date_range
+      ConfigJSON :   - init_date
+      ConfigJSON :   - end_date
       ConfigJSON : models[]
       ConfigJSON : agent_config
+      ConfigJSON :   - initial_cash = 100000.0
     end note
 
     note right of RuntimeEnv
       RuntimeEnv : SIGNATURE
       RuntimeEnv : TODAY_DATE
-      RuntimeEnv : MARKET
+      RuntimeEnv : MARKET = "cn"
       RuntimeEnv : IF_TRADE
       RuntimeEnv : LOG_FILE
       RuntimeEnv : LOG_PATH
     end note
 }
 
-' 市场数据流
-package "市场数据流 Market Data Flow" {
-    cloud "Alpha Vantage API" as AlphaAPI
+' A股市场数据流
+package "A股市场数据流 A-Stock Market Data Flow" {
     cloud "Tushare API" as TushareAPI
-    cloud "Binance API" as BinanceAPI
 
-    file "data/daily_prices_*.json" as DailyJSON <<market>>
-    file "data/merged.jsonl" as USMerged <<market>>
+    file "data/A_stock/sse_50_weight.csv" as SSE50CSV <<market>>
+    file "data/A_stock/daily_prices_sse_50.csv" as DailyCSV <<market>>
     file "data/A_stock/merged.jsonl" as CNMerged <<market>>
-    file "data/crypto/merged.jsonl" as CryptoMerged <<market>>
+    file "data/A_stock/index_daily_sse_50.json" as IndexJSON <<market>>
 
-    note right of DailyJSON
-      DailyJSON : Symbol: AAPL
-      DailyJSON : Time Series (Daily)
-      DailyJSON : - date: OHLCV
-    end note
-
-    note right of USMerged
-      USMerged : {Meta Data, Time Series}
-      USMerged : 统一JSONL格式
-      USMerged : NASDAQ 100所有股票
-      USMerged : ---
-      USMerged : **统一数据格式**
-      USMerged : - JSONL行式存储
-      USMerged : - 每行一个股票的完整历史
-      USMerged : - 支持高效日期查询
-      USMerged : - 自动过滤未来数据
+    note right of SSE50CSV
+      上证50成分股列表
+      - 股票代码
+      - 权重信息
+      - 定期更新
     end note
 
     note right of CNMerged
-      CNMerged : {Meta Data, Time Series}
-      CNMerged : 统一JSONL格式
-      CNMerged : 上证50所有股票
+      {Meta Data, Time Series}
+      统一JSONL格式
+      上证50所有股票
+      ---
+      **A股数据特点**
+      - JSONL行式存储
+      - 每行一个股票的完整历史
+      - 支持高效日期查询
+      - 自动过滤未来数据
+      - T+1交易日历
+      - 股票代码格式: XXXXXX.SH/SZ
     end note
 
-    note right of CryptoMerged
-      CryptoMerged : {Meta Data, Time Series}
-      CryptoMerged : 统一JSONL格式
-      CryptoMerged : 主流加密货币(USDT交易对)
-      CryptoMerged : ---
-      CryptoMerged : **加密货币数据特点**
-      CryptoMerged : - 7×24小时连续数据
-      CryptoMerged : - USDT交易对
-      CryptoMerged : - 分钟级/小时级数据
-      CryptoMerged : - 实时更新
+    note right of IndexJSON
+      上证50指数数据
+      - 指数日线数据
+      - 用于基准对比
+      - 绩效评估
     end note
 }
 
-' 持仓数据流
-package "持仓数据流 Position Flow" {
-    file "agent_data/{signature}/\nposition/position.jsonl" as USPosition <<position>>
+' A股持仓数据流
+package "A股持仓数据流 A-Stock Position Flow" {
     file "agent_data_astock/{signature}/\nposition/position.jsonl" as CNPosition <<position>>
-    file "agent_data_crypto/{signature}/\nposition/position.jsonl" as CryptoPosition <<position>>
-
-    note right of USPosition
-      USPosition : date
-      USPosition : id
-      USPosition : this_action
-      USPosition :   - action (buy/sell/hold)
-      USPosition :   - symbol
-      USPosition :   - amount
-      USPosition : positions
-      USPosition :   - {symbol}: quantity
-      USPosition :   - CASH: balance
-      USPosition : ---
-      USPosition : **持仓记录特点**
-      USPosition : - 追加写入(append-only)
-      USPosition : - 文件锁保证原子性
-      USPosition : - 每次交易创建新记录
-      USPosition : - 保留完整历史轨迹
-    end note
 
     note right of CNPosition
       CNPosition : date
@@ -130,49 +103,21 @@ package "持仓数据流 Position Flow" {
       CNPosition :   - amount (100股为单位)
       CNPosition : positions
       CNPosition :   - {symbol}: quantity
-      CNPosition :   - CASH: balance
-    end note
-
-    note right of CryptoPosition
-      CryptoPosition : date
-      CryptoPosition : id
-      CryptoPosition : this_action
-      CryptoPosition :   - action (buy/sell/hold)
-      CryptoPosition :   - symbol (带-USDT后缀)
-      CryptoPosition :   - amount
-      CryptoPosition : positions
-      CryptoPosition :   - {symbol}: quantity
-      CryptoPosition :   - CASH: USDT balance
-      CryptoPosition : ---
-      CryptoPosition : **加密货币持仓特点**
-      CryptoPosition : - CASH用USDT计价
-      CryptoPosition : - 支持小数精度
-      CryptoPosition : - 无手数限制
-      CryptoPosition : - 7×24小时可交易
+      CNPosition :   - CASH: balance (人民币)
+      CNPosition : ---
+      CNPosition : **A股持仓特点**
+      CNPosition : - 追加写入(append-only)
+      CNPosition : - 文件锁保证原子性
+      CNPosition : - 每次交易创建新记录
+      CNPosition : - 保留完整历史轨迹
+      CNPosition : - 100股手数验证
+      CNPosition : - T+1结算
     end note
 }
 
-' 日志数据流
-package "日志数据流 Log Flow" {
-    file "agent_data/{signature}/\nlog/{date}/log.jsonl" as USLog <<log>>
+' A股日志数据流
+package "A股日志数据流 A-Stock Log Flow" {
     file "agent_data_astock/{signature}/\nlog/{date}/log.jsonl" as CNLog <<log>>
-    file "agent_data_crypto/{signature}/\nlog/{date}/log.jsonl" as CryptoLog <<log>>
-
-    note right of USLog
-      USLog : signature
-      USLog : new_messages[]
-      USLog :   - role (assistant/user/system)
-      USLog :   - content
-      USLog :     * AI分析内容
-      USLog :     * Tool调用请求
-      USLog :     * Tool返回结果
-      USLog : ---
-      USLog : **日志记录内容**
-      USLog : - AI完整推理过程
-      USLog : - 工具调用及结果
-      USLog : - 按日期分目录存储
-      USLog : - 可用于调试和分析
-    end note
 
     note right of CNLog
       CNLog : signature
@@ -180,18 +125,16 @@ package "日志数据流 Log Flow" {
       CNLog :   - role (assistant/user/system)
       CNLog :   - content
       CNLog :     * A股市场分析
+      CNLog :     * 中文推理过程
       CNLog :     * Tool调用请求
       CNLog :     * Tool返回结果
-    end note
-
-    note right of CryptoLog
-      CryptoLog : signature
-      CryptoLog : new_messages[]
-      CryptoLog :   - role (assistant/user/system)
-      CryptoLog :   - content
-      CryptoLog :     * 加密货币分析
-      CryptoLog :     * Tool调用请求
-      CryptoLog :     * Tool返回结果
+      CNLog : ---
+      CNLog : **A股日志特点**
+      CNLog : - AI完整推理过程
+      CNLog : - 中文市场分析
+      CNLog : - 工具调用及结果
+      CNLog : - 按日期分目录存储
+      CNLog : - 可用于调试和分析
     end note
 }
 
@@ -200,81 +143,97 @@ rectangle "main.py" as Main {
 }
 
 ' Agent层
-rectangle "BaseAgent/\nBaseAgentAStock/\nBaseAgentCrypto" as Agent {
+rectangle "BaseAgentAStock" as Agent {
 }
 
 ' MCP工具层
 rectangle "MCP Tools" as MCP {
-    component "tool_trade" as Trade
-    component "tool_get_price_local" as Price
-    component "tool_jina_search" as Search
+    component "tool_trade\n(A股交易)" as Trade
+    component "tool_get_price_local\n(A股价格查询)" as Price
+    component "tool_jina_search\n(市场信息)" as Search
+    component "tool_math\n(计算工具)" as Math
 }
 
 ' 工具层
 rectangle "Utility Tools" as Utils {
-    component "general_tools" as GenTools
-    component "price_tools" as PriceTools
+    component "general_tools\n(配置管理)" as GenTools
+    component "price_tools\n(A股价格工具)" as PriceTools
+    component "result_tools\n(绩效分析)" as ResultTools
 }
 
 ' ==== 数据流向 ====
 
 ' 配置数据流向
 ENV -down-> Main : 读取环境变量
-ConfigJSON -down-> Main : 加载配置文件
-Main -down-> RuntimeEnv : 写入运行时配置
+ConfigJSON -down-> Main : 加载A股配置
+Main -down-> RuntimeEnv : 写入运行时配置\n(MARKET="cn")
 RuntimeEnv <--> GenTools : 读写配置
 GenTools <--> Agent : 配置管理
 GenTools <--> MCP : 配置读取
 
-' 市场数据获取流
-AlphaAPI ..> DailyJSON : 获取数据\n(get_daily_price.py)
-DailyJSON ..> USMerged : 合并转换\n(merge_jsonl.py)
-TushareAPI ..> CNMerged : 获取并转换\n(get_daily_price_a_stock.py\n + merge_a_stock_jsonl.py)
-BinanceAPI ..> CryptoMerged : 获取并转换\n(get_crypto_price.py\n + merge_crypto_jsonl.py)
+' A股市场数据获取流
+TushareAPI ..> SSE50CSV : 获取成分股列表
+TushareAPI ..> DailyCSV : 获取日线数据
+TushareAPI ..> IndexJSON : 获取指数数据
+DailyCSV ..> CNMerged : 合并转换\n(merge_a_stock_jsonl.py)
 
-' 市场数据读取流
-USMerged -down-> PriceTools : 读取US价格
-CNMerged -down-> PriceTools : 读取CN价格
-CryptoMerged -down-> PriceTools : 读取Crypto价格
+' A股市场数据读取流
+CNMerged -down-> PriceTools : 读取A股价格
 PriceTools -down-> Agent : 提供价格数据
-USMerged -down-> Price : MCP读取价格
 CNMerged -down-> Price : MCP读取价格
-CryptoMerged -down-> Price : MCP读取价格
 
-' 持仓数据流
-Agent --> USPosition : 初始化\n注册Agent
-Agent --> CNPosition : 初始化\n注册Agent
-Agent --> CryptoPosition : 初始化\n注册Agent
-USPosition <--> Trade : 读写US持仓
-CNPosition <--> Trade : 读写CN持仓
-CryptoPosition <--> Trade : 读写Crypto持仓
-USPosition <--> PriceTools : 读取持仓
+' A股持仓数据流
+Agent --> CNPosition : 初始化注册\n(初始资金¥100,000)
+CNPosition <--> Trade : 读写A股持仓\n(100股手数验证)
 CNPosition <--> PriceTools : 读取持仓
-CryptoPosition <--> PriceTools : 读取持仓
 Trade --> Agent : 返回交易结果
 
-' 日志数据流
-Agent -down-> USLog : 记录US交易日志
-Agent -down-> CNLog : 记录CN交易日志
-Agent -down-> CryptoLog : 记录Crypto交易日志
+' A股日志数据流
+Agent -down-> CNLog : 记录A股交易日志\n(中文分析)
 
 ' Agent与工具交互
-Main -down-> Agent : 创建并初始化
+Main -down-> Agent : 创建BaseAgentAStock
 Agent <--> MCP : MCP工具调用
 Agent --> Search : 信息搜索
+Agent --> Math : 数学计算
+
+' 绩效分析
+CNPosition --> ResultTools : 读取历史持仓
+IndexJSON --> ResultTools : 对比基准指数
+ResultTools --> Agent : 生成绩效报告
 
 note top of RuntimeEnv
   **运行时共享配置**
   - 所有Agent实例共享
   - 文件锁保证并发安全
   - 存储当前执行上下文
+  - Market固定为"cn"
+end note
+
+note bottom of TushareAPI
+  **Tushare数据源**
+  - 中国A股专业数据
+  - 需要token认证
+  - 支持历史数据
+  - 日线/分钟线数据
+  - 成分股信息
+end note
+
+note bottom of Trade
+  **A股交易特点**
+  - T+1结算规则
+  - 100股为一手
+  - 买入验证手数
+  - 卖出验证持仓
+  - 人民币计价
+  - 文件锁保证原子性
 end note
 
 legend right
   |<#E1F5FE> 配置数据 |
-  |<#FFF9C4> 市场数据 |
-  |<#C8E6C9> 持仓数据 |
-  |<#FFECB3> 日志数据 |
+  |<#FFF9C4> A股市场数据 |
+  |<#C8E6C9> A股持仓数据 |
+  |<#FFECB3> A股日志数据 |
   |<#F3E5F5> 运行时配置 |
 endlegend
 

@@ -1,5 +1,205 @@
 # 架构图更新日志
 
+## 2025-11-13 - 简化为仅支持A股市场
+
+### 更新内容
+
+根据项目需求，将所有架构图简化为仅支持A股市场，移除了美股和加密货币相关内容。
+
+#### 1. 系统架构图 (system_architecture.puml)
+- ✅ 移除 `BaseAgent` (美股Agent)
+- ✅ 移除 `BaseAgentCrypto` (加密货币Agent)
+- ✅ 移除 `BaseAgent_Hour` (美股小时级Agent)
+- ✅ 仅保留 `BaseAgentAStock` (A股交易Agent)
+- ✅ 移除美股数据 (`merged.jsonl`, `agent_data/`)
+- ✅ 移除加密货币数据 (`crypto/merged.jsonl`, `agent_data_crypto/`)
+- ✅ 移除 Alpha Vantage 和 Binance API
+- ✅ 仅保留 Tushare API、A_stock/merged.jsonl、agent_data_astock/
+- ✅ 标题更新为 "AI-Trader系统架构图"
+
+#### 2. 核心类图 (class_diagram.puml)
+- ✅ 移除 `BaseAgent` 和 `BaseAgentCrypto` 类定义
+- ✅ 扩展 `BaseAgentAStock` 类，显示完整属性和方法
+  - 核心属性：signature, basemodel, market="cn", stock_symbols, initial_cash=100000.0
+  - 核心方法：initialize(), run_trading_session(), run_date_range()
+  - A股特性：上证50股票池, T+1结算, 100股手数验证
+- ✅ 更新 `AgentRegistry` 仅包含 "BaseAgentAStock"
+- ✅ 将 `AgentPrompt` 更名为 `AgentPromptAStock`
+- ✅ 标题更新为 "AI-Trader核心类图"
+
+#### 3. 数据流图 (data_flow.puml)
+- ✅ 完全重写为 "AI-Trader数据流图 - A股市场"
+- ✅ 配置数据流
+  - .env (包含 TUSHARE_TOKEN)
+  - configs/astock_config.json (A股专用配置)
+  - runtime_env.json (MARKET="cn")
+- ✅ A股市场数据流
+  - Tushare API → sse_50_weight.csv → daily_prices_sse_50.csv → merged.jsonl
+  - index_daily_sse_50.json (上证50指数数据)
+- ✅ A股持仓数据流
+  - agent_data_astock/{signature}/position/position.jsonl
+  - 追加写入模式，文件锁保证原子性
+  - 100股手数验证，T+1结算
+- ✅ A股日志数据流
+  - agent_data_astock/{signature}/log/{date}/log.jsonl
+  - 包含中文市场分析和推理过程
+
+#### 4. MCP工具交互图 (mcp_interaction.puml)
+- ✅ 完全重写为 "MCP工具交互图 - A股市场"
+- ✅ 添加详细的A股交易示例
+  - A股价格查询：600519.SH (贵州茅台) 2025-10-15
+  - A股信息搜索：中文查询示例 "贵州茅台最新财报"
+  - A股买入失败：600519.SH 200股，现金不足示例
+  - A股买入成功：600036.SH 100股，完整交易流程
+  - A股卖出：600036.SH 100股，完整卖出流程
+- ✅ 展示A股特殊处理
+  - 市场类型检测 (.SH/.SZ 后缀)
+  - 100股手数验证
+  - 人民币计价
+  - T+1结算规则
+  - 文件锁保证并发安全
+
+#### 5. 交易流程图 (trading_flow.puml)
+- ✅ 完全重写为 "AI-Trader A股交易流程序列图"
+- ✅ 将所有参与者更新为A股专用
+  - configs/astock_config.json
+  - BaseAgentAStock (A股交易Agent)
+  - MCP工具链 (A股专用)
+  - A股数据存储 (agent_data_astock/)
+  - Tushare (A股数据源)
+- ✅ 初始化阶段
+  - 自动设置 market="cn"
+  - 初始资金 ¥100,000
+  - 上证50股票池
+  - A股工具服务端口 (8000-8003)
+- ✅ 数据准备阶段
+  - 检查A股持仓文件
+  - 读取 A_stock/merged.jsonl
+  - 验证A股交易日
+- ✅ A股交易执行阶段
+  - 使用 AgentPromptAStock
+  - .SH/.SZ 股票代码格式
+  - 100股手数验证
+  - T+1结算规则
+  - 人民币计价
+  - 文件锁保证原子性
+  - 中文推理过程
+
+#### 6. 文档更新
+- ✅ README.md 和 INDEX.md 保持通用说明
+- ✅ CHANGELOG.md 记录简化过程
+
+### 支持的市场
+
+系统现在仅支持A股市场：
+
+| 市场 | Agent类 | 货币 | 初始资金 | 交易规则 | 特点 |
+|-----|---------|------|---------|---------|------|
+| **A股** | BaseAgentAStock | CNY (¥) | ¥100,000 | T+1，100股为单位 | 上证50成分股 |
+
+### 数据结构
+
+A股市场数据完全独立：
+
+```
+data/
+└── A_stock/
+    ├── sse_50_weight.csv           # 上证50成分股列表
+    ├── daily_prices_sse_50.csv     # 日线价格数据
+    ├── merged.jsonl                # 统一JSONL格式
+    └── index_daily_sse_50.json     # 上证50指数数据
+
+agent_data_astock/
+└── {signature}/
+    ├── position/
+    │   └── position.jsonl          # A股持仓记录
+    └── log/
+        └── {date}/
+            └── log.jsonl           # A股交易日志
+```
+
+### 配置示例
+
+#### A股配置 (configs/astock_config.json)
+```json
+{
+  "agent_type": "BaseAgentAStock",
+  "market": "cn",
+  "date_range": {
+    "init_date": "2025-01-01",
+    "end_date": "2025-12-31"
+  },
+  "agent_config": {
+    "initial_cash": 100000.0
+  },
+  "models": [
+    {
+      "basemodel": "gpt-4",
+      "signature": "astock_gpt4"
+    }
+  ]
+}
+```
+
+### 主要代码对应
+
+在 `main.py` 中：
+
+1. **AGENT_REGISTRY** 仅包含：
+```python
+AGENT_REGISTRY = {
+    "BaseAgentAStock": {
+        "module": "agent.base_agent_astock.base_agent_astock",
+        "class": "BaseAgentAStock"
+    }
+}
+```
+
+2. **市场自动检测**：
+```python
+# 从agent_type自动检测市场
+if agent_type == "BaseAgentAStock":
+    market = "cn"
+```
+
+3. **货币符号显示**：
+```python
+if agent.market == "cn":
+    currency_symbol = "¥"
+```
+
+### 架构图生成
+
+更新后的架构图可以通过以下方式生成：
+
+```bash
+cd docs/architecture
+
+# 生成SVG格式（推荐）
+bash generate_diagrams.sh svg
+
+# 生成PNG格式
+bash generate_diagrams.sh png
+
+# 同时生成两种格式
+bash generate_diagrams.sh both
+```
+
+### 简化优势
+
+1. **专注A股市场**：去除冗余的美股和加密货币逻辑
+2. **清晰的架构**：所有图表专注于A股特性
+3. **易于维护**：减少市场类型判断，降低复杂度
+4. **中文友好**：A股专用提示词和中文分析
+
+---
+
+**更新人**: Claude Code
+**更新日期**: 2025-11-13
+**影响范围**: 所有架构图、部分文档
+
+---
+
 ## 2025-11-12 - 添加加密货币市场支持
 
 ### 更新内容

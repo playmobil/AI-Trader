@@ -9,43 +9,18 @@ skinparam class {
 
 title AI-Trader核心类图
 
-package "agent.base_agent" {
-    class BaseAgent {
-        # 属性 Attributes
-        - signature: str
-        - basemodel: str
-        - market: str
-        - stock_symbols: List[str]
-        - max_steps: int
-        - max_retries: int
-        - base_delay: float
-        - initial_cash: float
-        - init_date: str
-        - client: MultiServerMCPClient
-        - tools: List
-        - model: ChatOpenAI
-        - agent: Any
-        - data_path: str
-        - position_file: str
+package "langchain_openai" {
+    class ChatOpenAI {
+        <<基础LLM类>>
+        + model: str
+        + base_url: str
+        + api_key: str
+        + max_retries: int
+        + timeout: int
 
-        # 默认常量
-        + DEFAULT_STOCK_SYMBOLS: List[str]
-
-        # 方法 Methods
-        + __init__(signature, basemodel, ...)
-        + initialize(): None
-        + run_trading_session(today_date): None
-        + run_date_range(init_date, end_date): None
-        + register_agent(): None
-        + get_trading_dates(init_date, end_date): List[str]
-        + get_position_summary(): Dict
-
-        # 私有方法 Private Methods
-        - _get_default_mcp_config(): Dict
-        - _setup_logging(today_date): str
-        - _log_message(log_file, messages): None
-        - _ainvoke_with_retry(message): Any
-        - _handle_trading_result(today_date): None
+        + __init__(...)
+        + _generate(messages, stop, **kwargs)
+        + _agenerate(messages, stop, **kwargs)
     }
 
     class DeepSeekChatOpenAI {
@@ -62,39 +37,52 @@ package "agent.base_agent" {
 
 package "agent.base_agent_astock" {
     class BaseAgentAStock {
-        <<A股专用>>
-        # 覆盖属性
+        <<A股交易Agent>>
+
+        # 核心属性
+        - signature: str
+        - basemodel: str
         - market: str = "cn"
-        - DEFAULT_STOCK_SYMBOLS: List[str]
+        - stock_symbols: List[str]
+        - max_steps: int
+        - max_retries: int
+        - base_delay: float
+        - initial_cash: float = 100000.0
+        - init_date: str
 
-        # 覆盖方法
-        + __init__(...)
+        # 组件
+        - client: MultiServerMCPClient
+        - tools: List
+        - model: ChatOpenAI
+        - agent: Any
+        - data_path: str
+        - position_file: str
 
-        .. 特性 Features ..
-        - 默认上证50股票池
+        # 默认常量
+        + DEFAULT_STOCK_SYMBOLS: List[str]
+
+        # 核心方法
+        + __init__(signature, basemodel, ...)
+        + initialize(): None
+        + run_trading_session(today_date): None
+        + run_date_range(init_date, end_date): None
+        + register_agent(): None
+        + get_trading_dates(init_date, end_date): List[str]
+        + get_position_summary(): Dict
+
+        # 私有方法
+        - _get_default_mcp_config(): Dict
+        - _setup_logging(today_date): str
+        - _log_message(log_file, messages): None
+        - _ainvoke_with_retry(message): Any
+        - _handle_trading_result(today_date): None
+
+        .. A股特性 ..
+        - 上证50股票池
         - T+1结算规则
         - 100股手数验证
+        - 人民币计价
         - 中文提示词
-    }
-}
-
-package "agent.base_agent_crypto" {
-    class BaseAgentCrypto {
-        <<加密货币专用>>
-        # 覆盖属性
-        - market: str = "crypto"
-        - crypto_symbols: List[str]
-        - initial_cash: float = 10000.0 (USDT)
-
-        # 覆盖方法
-        + __init__(...)
-
-        .. 特性 Features ..
-        - 7×24小时交易
-        - USDT计价
-        - 无手数限制
-        - 主流加密货币池
-        - 无stock_symbols参数
     }
 }
 
@@ -103,10 +91,10 @@ package "main" {
         <<注册表>>
         + AGENT_REGISTRY: Dict
         --
-        "BaseAgent": {...}
-        "BaseAgentAStock": {...}
-        "BaseAgent_Hour": {...}
-        "BaseAgentCrypto": {...}
+        "BaseAgentAStock": {
+          "module": "agent.base_agent_astock.base_agent_astock",
+          "class": "BaseAgentAStock"
+        }
     }
 
     class MainModule {
@@ -114,6 +102,9 @@ package "main" {
         + get_agent_class(agent_type): Class
         + load_config(config_path): Dict
         + main(config_path): None
+        --
+        专注A股市场
+        自动设置market="cn"
     }
 }
 
@@ -184,27 +175,26 @@ package "tools (Utilities)" {
 }
 
 package "prompts" {
-    class AgentPrompt {
+    class AgentPromptAStock {
         + STOP_SIGNAL: str
-        + all_nasdaq_100_symbols: List[str]
         + all_sse_50_symbols: List[str]
-        + get_agent_system_prompt(date, signature, market, symbols): str
+        + get_agent_system_prompt(date, signature, symbols): str
         --
+        A股专用提示词
         动态生成系统提示词
-        包含当前价格和持仓
+        包含当前A股价格和持仓
+        中文市场分析提示
     }
 }
 
 ' 继承关系
-BaseAgent <|-- BaseAgentAStock
-BaseAgent <|-- BaseAgentCrypto
 ChatOpenAI <|-- DeepSeekChatOpenAI
 
 ' 组合关系
-BaseAgent *-- DeepSeekChatOpenAI : uses (for DeepSeek models)
-BaseAgent o-- "1" MultiServerMCPClient : client
-BaseAgent o-- "1..*" MCPTool : tools
-BaseAgent o-- "1" ChatOpenAI : model
+BaseAgentAStock o-- "1" MultiServerMCPClient : client
+BaseAgentAStock o-- "1..*" MCPTool : tools
+BaseAgentAStock o-- "1" ChatOpenAI : model
+BaseAgentAStock *-- DeepSeekChatOpenAI : uses (for DeepSeek models)
 
 ' 实现关系
 MCPTool <|.. TradeTool
@@ -214,54 +204,47 @@ MCPTool <|.. MathTool
 
 ' 依赖关系
 MainModule ..> AgentRegistry : uses
-MainModule ..> BaseAgent : creates
 MainModule ..> BaseAgentAStock : creates
-MainModule ..> BaseAgentCrypto : creates
-BaseAgent ..> GeneralTools : uses
-BaseAgent ..> PriceTools : uses
-BaseAgent ..> AgentPrompt : uses
-BaseAgentAStock ..> AgentPrompt : uses
-BaseAgentCrypto ..> AgentPrompt : uses
+BaseAgentAStock ..> GeneralTools : uses
+BaseAgentAStock ..> PriceTools : uses
+BaseAgentAStock ..> AgentPromptAStock : uses
 TradeTool ..> PriceTools : uses
 TradeTool ..> GeneralTools : uses
 PriceTool ..> PriceTools : uses
 
-note top of BaseAgent
-  核心交易Agent
-  - 支持US/CN/Crypto三大市场
-  - MCP工具驱动执行
-  - 完整历史回放能力
-  - 自动持仓管理
-end note
-
 note top of BaseAgentAStock
-  A股专用Agent
-  - 强制CN市场
-  - 上证50默认股票池
-  - T+1结算
+  A股交易核心Agent
+  - 专注中国A股市场
+  - 上证50成分股池
+  - T+1结算规则
   - 100股手数验证
-end note
-
-note top of BaseAgentCrypto
-  加密货币专用Agent
-  - 强制Crypto市场
-  - 主流加密货币池
-  - 7×24小时交易
-  - USDT计价
-  - 无手数限制
+  - MCP工具驱动
+  - 完整历史回放
+  - 人民币计价
 end note
 
 note right of DeepSeekChatOpenAI
   处理DeepSeek API特殊性
   tool_calls.args可能是
   JSON字符串而非dict
+  自动转换为dict格式
 end note
 
 note bottom of TradeTool
-  交易执行核心
-  - 自动市场规则检测
+  A股交易执行核心
+  - T+1结算规则
+  - 100股手数验证
   - 文件锁保证并发安全
   - 持仓原子性更新
+  - 完整交易历史记录
+end note
+
+note bottom of PriceTool
+  A股价格查询
+  - 从merged.jsonl读取
+  - 支持历史回放
+  - 自动过滤未来数据
+  - Tushare数据源
 end note
 
 note bottom of GeneralTools
@@ -270,8 +253,10 @@ note bottom of GeneralTools
   文件存储关键运行时信息:
   - SIGNATURE
   - TODAY_DATE
-  - MARKET
+  - MARKET (固定为"cn")
   - IF_TRADE
+  - LOG_FILE
+  - LOG_PATH
 end note
 
 @enduml
