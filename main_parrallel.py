@@ -10,35 +10,30 @@ load_dotenv()
 
 # Import tools and prompts
 from tools.general_tools import write_config_value
-from prompts.agent_prompt import all_nasdaq_100_symbols
 
 
-# Agent class mapping table - for dynamic import and instantiation
+# Agent class mapping table - 仅支持A股Agent
 AGENT_REGISTRY = {
-    "BaseAgent": {
-        "module": "agent.base_agent.base_agent",
-        "class": "BaseAgent"
-    },
-    "BaseAgent_Hour": {
-        "module": "agent.base_agent.base_agent_hour",
-        "class": "BaseAgent_Hour"
-    },
+    "BaseAgentAStock": {
+        "module": "agent.base_agent_astock.base_agent_astock",
+        "class": "BaseAgentAStock"
+    }
 }
 
 
 def get_agent_class(agent_type):
     """
-    Dynamically import and return the corresponding class based on agent type name
-    
+    根据agent类型名称动态导入并返回对应的类
+
     Args:
-        agent_type: Agent type name (e.g., "BaseAgent")
-        
+        agent_type: Agent类型名称（例如："BaseAgentAStock"）
+
     Returns:
-        Agent class
-        
+        Agent类
+
     Raises:
-        ValueError: If agent type is not supported
-        ImportError: If unable to import agent module
+        ValueError: 如果agent类型不支持
+        ImportError: 如果无法导入agent模块
     """
     if agent_type not in AGENT_REGISTRY:
         supported_types = ", ".join(AGENT_REGISTRY.keys())
@@ -75,8 +70,8 @@ def load_config(config_path=None):
         dict: Configuration dictionary
     """
     if config_path is None:
-        # Default configuration file path
-        config_path = Path(__file__).parent / "configs" / "default_config.json"
+        # 默认A股配置文件路径
+        config_path = Path(__file__).parent / "configs" / "astock_config.json"
     else:
         config_path = Path(config_path)
     
@@ -133,10 +128,11 @@ async def _run_model_in_current_process(AgentClass, model_config, INIT_DATE, END
     log_path = log_config.get("log_path", "./data/agent_data")
 
     try:
+        # BaseAgentAStock使用自己的默认上证50股票池
         agent = AgentClass(
             signature=signature,
             basemodel=basemodel,
-            stock_symbols=all_nasdaq_100_symbols,
+            stock_symbols=None,
             log_path=log_path,
             openai_base_url=openai_base_url,
             openai_api_key=openai_api_key,
@@ -149,14 +145,14 @@ async def _run_model_in_current_process(AgentClass, model_config, INIT_DATE, END
 
         print(f"✅ {AgentClass.__name__} instance created successfully: {agent}")
         await agent.initialize()
-        print("✅ Initialization successful")
+        print("✅ 初始化成功")
         await agent.run_date_range(INIT_DATE, END_DATE)
 
         summary = agent.get_position_summary()
-        print(f"📊 Final position summary:")
-        print(f"   - Latest date: {summary.get('latest_date')}")
-        print(f"   - Total records: {summary.get('total_records')}")
-        print(f"   - Cash balance: ${summary.get('positions', {}).get('CASH', 0):.2f}")
+        print(f"📊 最终持仓摘要:")
+        print(f"   - 最新日期: {summary.get('latest_date')}")
+        print(f"   - 总记录数: {summary.get('total_records')}")
+        print(f"   - 现金余额: ¥{summary.get('positions', {}).get('CASH', 0):,.2f}")
 
     except Exception as e:
         print(f"❌ Error processing model {model_name} ({signature}): {str(e)}")
@@ -189,17 +185,17 @@ async def _spawn_model_subprocesses(config_path, enabled_models):
 
 
 async def main(config_path=None, only_signature: str | None = None):
-    """Run trading experiment using Agent class (parallel runner)
-    
+    """使用Agent类运行A股交易实验（并行运行器）
+
     Args:
-        config_path: Configuration file path, if None use default config
-        only_signature: If provided, run only this model signature
+        config_path: 配置文件路径，如果为None则使用默认A股配置
+        only_signature: 如果提供，则仅运行此模型签名
     """
-    # Load configuration file
+    # 加载配置文件
     config = load_config(config_path)
-    
-    # Get Agent type
-    agent_type = config.get("agent_type", "BaseAgent")
+
+    # 获取Agent类型（仅支持BaseAgentAStock）
+    agent_type = config.get("agent_type", "BaseAgentAStock")
     try:
         AgentClass = get_agent_class(agent_type)
     except (ValueError, ImportError, AttributeError) as e:
@@ -245,35 +241,36 @@ async def main(config_path=None, only_signature: str | None = None):
     agent_config = config.get("agent_config", {})
     log_config = config.get("log_config", {})
 
-    # Display enabled model information
+    # 显示已启用的模型信息
     model_names = [m.get("name", m.get("signature")) for m in enabled_models]
-    print("🚀 Starting trading experiment (parallel runner)")
-    print(f"🤖 Agent type: {agent_type}")
-    print(f"📅 Date range: {INIT_DATE} to {END_DATE}")
-    print(f"🤖 Model list: {model_names}")
+
+    print("🚀 启动A股交易实验（并行模式）")
+    print(f"🤖 Agent类型: {agent_type}")
+    print(f"📅 日期范围: {INIT_DATE} 至 {END_DATE}")
+    print(f"🤖 模型列表: {model_names}")
 
     if len(enabled_models) <= 1:
         for model_config in enabled_models:
             await _run_model_in_current_process(AgentClass, model_config, INIT_DATE, END_DATE, agent_config, log_config)
-        print("🎉 All models processing completed!")
+        print("🎉 所有模型处理完成!")
     else:
-        print("⚡ Multiple models enabled; running them in parallel using subprocesses...")
+        print("⚡ 多个模型已启用；使用子进程并行运行...")
         await _spawn_model_subprocesses(config_path, enabled_models)
-        print("🎉 All model subprocesses completed!")
+        print("🎉 所有模型子进程已完成!")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="AI-Trader parallel runner")
-    parser.add_argument("config_path", nargs="?", default=None, help="Path to config JSON")
-    parser.add_argument("--signature", dest="signature", default=None, help="Run only this model signature")
+    parser = argparse.ArgumentParser(description="AI-Trader A股并行运行器")
+    parser.add_argument("config_path", nargs="?", default=None, help="配置文件路径")
+    parser.add_argument("--signature", dest="signature", default=None, help="仅运行此模型签名")
     args = parser.parse_args()
 
     if args.config_path:
-        print(f"📄 Using specified configuration file: {args.config_path}")
+        print(f"📄 使用指定的配置文件: {args.config_path}")
     else:
-        print(f"📄 Using default configuration file: configs/default_config.json")
+        print(f"📄 使用默认A股配置文件: configs/astock_config.json")
     if args.signature:
-        print(f"🎯 Filtering to single signature: {args.signature}")
+        print(f"🎯 筛选单个签名: {args.signature}")
 
     asyncio.run(main(args.config_path, args.signature))
 

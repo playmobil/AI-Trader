@@ -1,5 +1,4 @@
 from tools.general_tools import get_config_value, write_config_value
-from prompts.agent_prompt import all_nasdaq_100_symbols
 import asyncio
 import json
 import os
@@ -12,23 +11,11 @@ load_dotenv()
 
 # 导入工具和提示
 
-# Agent类映射表 - 用于动态导入和实例化
+# Agent类映射表 - 仅支持A股Agent
 AGENT_REGISTRY = {
-    "BaseAgent": {
-        "module": "agent.base_agent.base_agent",
-        "class": "BaseAgent"
-    },
-    "BaseAgent_Hour": {
-        "module": "agent.base_agent.base_agent_hour",
-        "class": "BaseAgent_Hour"
-    },
     "BaseAgentAStock": {
         "module": "agent.base_agent_astock.base_agent_astock",
         "class": "BaseAgentAStock"
-    },
-    "BaseAgentCrypto": {
-        "module": "agent.base_agent_crypto.base_agent_crypto",
-        "class": "BaseAgentCrypto"
     }
 }
 
@@ -84,8 +71,8 @@ def load_config(config_path=None):
         dict: 配置字典
     """
     if config_path is None:
-        # 默认配置文件路径
-        config_path = Path(__file__).parent / "configs" / "default_config.json"
+        # 默认A股配置文件路径
+        config_path = Path(__file__).parent / "configs" / "astock_config.json"
     else:
         config_path = Path(config_path)
 
@@ -107,36 +94,25 @@ def load_config(config_path=None):
 
 
 async def main(config_path=None):
-    """使用BaseAgent类运行交易实验
+    """使用BaseAgentAStock类运行A股交易实验
 
     Args:
-        config_path: 配置文件路径，如果为None则使用默认配置
+        config_path: 配置文件路径，如果为None则使用默认A股配置
     """
     # 加载配置文件
     config = load_config(config_path)
 
-    # 获取Agent类型
-    agent_type = config.get("agent_type", "BaseAgent")
+    # 获取Agent类型（仅支持BaseAgentAStock）
+    agent_type = config.get("agent_type", "BaseAgentAStock")
     try:
         AgentClass = get_agent_class(agent_type)
     except (ValueError, ImportError, AttributeError) as e:
         print(str(e))
         exit(1)
 
-    # 从配置中获取市场类型
-    market = config.get("market", "us")
-    # 从agent_type自动检测市场（BaseAgentAStock始终使用中国市场）
-    if agent_type == "BaseAgentAStock":
-        market = "cn"
-    elif agent_type == "BaseAgentCrypto":
-        market = "crypto"
-
-    if market == "crypto":
-        print(f"🌍 Market type: Cryptocurrency (24/7 trading)")
-    elif market == "cn":
-        print(f"🌍 Market type: A-shares (China)")
-    else:
-        print(f"🌍 Market type: US stocks")
+    # A股市场（固定）
+    market = "cn"
+    print(f"🌍 市场类型: A股市场（中国）")
 
     # 从配置文件获取日期范围
     INIT_DATE = config["date_range"]["init_date"]
@@ -183,12 +159,12 @@ async def main(config_path=None):
     # 显示已启用的模型信息
     model_names = [m.get("name", m.get("signature")) for m in enabled_models]
 
-    print("🚀 Starting trading experiment")
-    print(f"🤖 Agent type: {agent_type}")
-    print(f"📅 Date range: {INIT_DATE} to {END_DATE}")
-    print(f"🤖 Model list: {model_names}")
+    print("🚀 启动A股交易实验")
+    print(f"🤖 Agent类型: {agent_type}")
+    print(f"📅 日期范围: {INIT_DATE} 至 {END_DATE}")
+    print(f"🤖 模型列表: {model_names}")
     print(
-        f"⚙️  Agent config: max_steps={max_steps}, max_retries={max_retries}, base_delay={base_delay}, initial_cash={initial_cash}"
+        f"⚙️  Agent配置: max_steps={max_steps}, max_retries={max_retries}, base_delay={base_delay}, initial_cash={initial_cash}"
     )
 
     for model_config in enabled_models:
@@ -241,53 +217,26 @@ async def main(config_path=None):
         write_config_value("LOG_PATH", log_path)
 
         print(
-            f"✅ Runtime config initialized: SIGNATURE={signature}, MARKET={market}")
+            f"✅ 运行时配置已初始化: SIGNATURE={signature}, MARKET={market}")
 
-        # 根据agent类型和市场选择股票代码
-        # BaseAgentAStock有自己的默认代码，仅为BaseAgent设置
-
-        if agent_type == "BaseAgentCrypto":
-            stock_symbols = None  # Crypto agent uses its own crypto_symbols
-        elif agent_type == "BaseAgentAStock":
-            stock_symbols = None  # Let BaseAgentAStock use its default SSE 50
-
-        elif market == "cn":
-            from prompts.agent_prompt import all_sse_50_symbols
-
-            stock_symbols = all_sse_50_symbols
-        else:
-            stock_symbols = all_nasdaq_100_symbols
+        # BaseAgentAStock使用自己的默认上证50股票池
+        stock_symbols = None
 
         try:
-            # 动态创建Agent实例
-            # Crypto agents have different parameter requirements
-            if agent_type == "BaseAgentCrypto":
-                agent = AgentClass(
-                    signature=signature,
-                    basemodel=basemodel,
-                    log_path=log_path,
-                    max_steps=max_steps,
-                    max_retries=max_retries,
-                    base_delay=base_delay,
-                    initial_cash=initial_cash,
-                    init_date=INIT_DATE,
-                    openai_base_url=openai_base_url,
-                    openai_api_key=openai_api_key
-                )
-            else:
-                agent = AgentClass(
-                    signature=signature,
-                    basemodel=basemodel,
-                    stock_symbols=stock_symbols,
-                    log_path=log_path,
-                    max_steps=max_steps,
-                    max_retries=max_retries,
-                    base_delay=base_delay,
-                    initial_cash=initial_cash,
-                    init_date=INIT_DATE,
-                    openai_base_url=openai_base_url,
-                    openai_api_key=openai_api_key
-                )
+            # 创建BaseAgentAStock实例
+            agent = AgentClass(
+                signature=signature,
+                basemodel=basemodel,
+                stock_symbols=stock_symbols,
+                log_path=log_path,
+                max_steps=max_steps,
+                max_retries=max_retries,
+                base_delay=base_delay,
+                initial_cash=initial_cash,
+                init_date=INIT_DATE,
+                openai_base_url=openai_base_url,
+                openai_api_key=openai_api_key
+            )
 
             print(f"✅ {agent_type} instance created successfully: {agent}")
 
@@ -297,32 +246,17 @@ async def main(config_path=None):
             # 运行日期范围内的所有交易日
             await agent.run_date_range(INIT_DATE, END_DATE)
 
-            # 显示最终持仓摘要
+            # 显示最终A股持仓摘要
             summary = agent.get_position_summary()
 
-            # 从agent的实际市场获取货币符号（更准确）
+            # A股使用人民币符号
+            currency_symbol = "¥"
 
-            if agent.market == "crypto":
-                currency_symbol = "USDT"
-            elif agent.market == "cn":
-                currency_symbol = "¥"
-            else:
-                currency_symbol = "$"
-
-            print(f"📊 Final position summary:")
-            print(f"   - Latest date: {summary.get('latest_date')}")
-            print(f"   - Total records: {summary.get('total_records')}")
+            print(f"📊 最终持仓摘要:")
+            print(f"   - 最新日期: {summary.get('latest_date')}")
+            print(f"   - 总记录数: {summary.get('total_records')}")
             print(
-                f"   - Cash balance: {currency_symbol}{summary.get('positions', {}).get('CASH', 0):,.2f}")
-
-            # Show crypto positions if this is a crypto agent
-            if agent.market == "crypto" and hasattr(agent, 'crypto_symbols'):
-                crypto_positions = {k: v for k, v in summary.get(
-                    'positions', {}).items() if k.endswith('-USDT') and v > 0}
-                if crypto_positions:
-                    print(f"   - Crypto positions:")
-                    for symbol, amount in crypto_positions.items():
-                        print(f"     • {symbol}: {amount}")
+                f"   - 现金余额: {currency_symbol}{summary.get('positions', {}).get('CASH', 0):,.2f}")
 
         except Exception as e:
             print(
@@ -348,8 +282,8 @@ if __name__ == "__main__":
     config_path = sys.argv[1] if len(sys.argv) > 1 else None
 
     if config_path:
-        print(f"📄 Using specified configuration file: {config_path}")
+        print(f"📄 使用指定的配置文件: {config_path}")
     else:
-        print(f"📄 Using default configuration file: configs/default_config.json")
+        print(f"📄 使用默认A股配置文件: configs/astock_config.json")
 
     asyncio.run(main(config_path))
