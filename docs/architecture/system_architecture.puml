@@ -23,6 +23,7 @@ package "Agent层 Agent Layer" {
     [BaseAgent\n(通用交易Agent)] <<agent>> as BaseAgent
     [BaseAgentAStock\n(A股专用Agent)] <<agent>> as BaseAgentAStock
     [BaseAgent_Hour\n(小时级交易)] <<agent>> as BaseAgentHour
+    [BaseAgentCrypto\n(加密货币Agent)] <<agent>> as BaseAgentCrypto
     [agent_prompt.py\n(交易提示词)] <<agent>> as AgentPrompt
 }
 
@@ -44,6 +45,11 @@ package "数据层 Data Layer" {
         [A_stock/merged.jsonl\n(SSE 50)] as CNData
         [agent_data_astock/\n(A股交易记录)] as CNAgentData
     }
+
+    database "加密货币数据" {
+        [crypto/merged.jsonl\n(主流加密货币)] as CryptoData
+        [agent_data_crypto/\n(加密货币交易记录)] as CryptoAgentData
+    }
 }
 
 package "工具层 Utility Layer" {
@@ -57,6 +63,7 @@ package "外部服务 External Services" {
     cloud "Jina AI\n(信息搜索)" as Jina
     cloud "Alpha Vantage\n(US股票数据)" as AlphaVantage
     cloud "Tushare\n(A股数据)" as Tushare
+    cloud "Binance API\n(加密货币数据)" as Binance
 }
 
 ' 主流程关系
@@ -64,60 +71,83 @@ Main --> Config : 读取配置
 Main --> BaseAgent : 动态创建
 Main --> BaseAgentAStock : 动态创建
 Main --> BaseAgentHour : 动态创建
+Main --> BaseAgentCrypto : 动态创建
 
 ' Agent与工具关系
 BaseAgent --> AgentPrompt : 使用提示词
 BaseAgentAStock --> AgentPrompt : 使用提示词
+BaseAgentCrypto --> AgentPrompt : 使用提示词
 BaseAgent ..> TradeTool : MCP调用
 BaseAgent ..> PriceTool : MCP调用
 BaseAgent ..> SearchTool : MCP调用
 BaseAgent ..> MathTool : MCP调用
 BaseAgentAStock ..> TradeTool : MCP调用
 BaseAgentAStock ..> PriceTool : MCP调用
+BaseAgentCrypto ..> TradeTool : MCP调用
+BaseAgentCrypto ..> PriceTool : MCP调用
 
 ' Agent与数据关系
 BaseAgent --> USData : 读取价格
 BaseAgent --> USAgentData : 写入交易
 BaseAgentAStock --> CNData : 读取价格
 BaseAgentAStock --> CNAgentData : 写入交易
+BaseAgentCrypto --> CryptoData : 读取价格
+BaseAgentCrypto --> CryptoAgentData : 写入交易
 
 ' Agent与工具层关系
 BaseAgent --> GeneralTools : 配置管理
 BaseAgent --> PriceTools : 价格查询
 BaseAgentAStock --> GeneralTools : 配置管理
 BaseAgentAStock --> PriceTools : 价格查询
+BaseAgentCrypto --> GeneralTools : 配置管理
+BaseAgentCrypto --> PriceTools : 价格查询
 
 ' 工具与数据关系
 TradeTool --> USAgentData : 写入持仓
 TradeTool --> CNAgentData : 写入持仓
+TradeTool --> CryptoAgentData : 写入持仓
 PriceTool --> USData : 读取
 PriceTool --> CNData : 读取
+PriceTool --> CryptoData : 读取
 PriceTools --> USData : 读取
 PriceTools --> CNData : 读取
+PriceTools --> CryptoData : 读取
 
 ' 外部服务关系
 BaseAgent --> OpenAI : LLM推理
 BaseAgentAStock --> OpenAI : LLM推理
+BaseAgentCrypto --> OpenAI : LLM推理
 SearchTool --> Jina : 搜索请求
 USData <.. AlphaVantage : 数据获取
 CNData <.. Tushare : 数据获取
+CryptoData <.. Binance : 数据获取
 
 note right of Main
   动态加载Agent类
   支持多模型并行
+  支持三大市场: US/CN/Crypto
   环境变量配置
 end note
 
 note right of BaseAgent
-  支持US/CN市场
+  支持US/CN/Crypto市场
   MCP工具驱动
   历史回放功能
+  市场自动检测
+end note
+
+note bottom of BaseAgentCrypto
+  7×24小时交易
+  USDT计价
+  无手数限制
+  实时价格更新
 end note
 
 note bottom of TradeTool
   自动检测市场规则
-  T+0/T+1结算
-  100股手数验证(A股)
+  - US: T+0
+  - CN: T+1, 100股手数
+  - Crypto: 实时交易
 end note
 
 @enduml

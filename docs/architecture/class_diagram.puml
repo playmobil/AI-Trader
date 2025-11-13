@@ -78,6 +78,26 @@ package "agent.base_agent_astock" {
     }
 }
 
+package "agent.base_agent_crypto" {
+    class BaseAgentCrypto {
+        <<加密货币专用>>
+        # 覆盖属性
+        - market: str = "crypto"
+        - crypto_symbols: List[str]
+        - initial_cash: float = 10000.0 (USDT)
+
+        # 覆盖方法
+        + __init__(...)
+
+        .. 特性 Features ..
+        - 7×24小时交易
+        - USDT计价
+        - 无手数限制
+        - 主流加密货币池
+        - 无stock_symbols参数
+    }
+}
+
 package "main" {
     class AgentRegistry {
         <<注册表>>
@@ -86,6 +106,7 @@ package "main" {
         "BaseAgent": {...}
         "BaseAgentAStock": {...}
         "BaseAgent_Hour": {...}
+        "BaseAgentCrypto": {...}
     }
 
     class MainModule {
@@ -176,6 +197,7 @@ package "prompts" {
 
 ' 继承关系
 BaseAgent <|-- BaseAgentAStock
+BaseAgent <|-- BaseAgentCrypto
 ChatOpenAI <|-- DeepSeekChatOpenAI
 
 ' 组合关系
@@ -194,17 +216,19 @@ MCPTool <|.. MathTool
 MainModule ..> AgentRegistry : uses
 MainModule ..> BaseAgent : creates
 MainModule ..> BaseAgentAStock : creates
+MainModule ..> BaseAgentCrypto : creates
 BaseAgent ..> GeneralTools : uses
 BaseAgent ..> PriceTools : uses
 BaseAgent ..> AgentPrompt : uses
 BaseAgentAStock ..> AgentPrompt : uses
+BaseAgentCrypto ..> AgentPrompt : uses
 TradeTool ..> PriceTools : uses
 TradeTool ..> GeneralTools : uses
 PriceTool ..> PriceTools : uses
 
 note top of BaseAgent
   核心交易Agent
-  - 支持US/CN双市场
+  - 支持US/CN/Crypto三大市场
   - MCP工具驱动执行
   - 完整历史回放能力
   - 自动持仓管理
@@ -216,6 +240,15 @@ note top of BaseAgentAStock
   - 上证50默认股票池
   - T+1结算
   - 100股手数验证
+end note
+
+note top of BaseAgentCrypto
+  加密货币专用Agent
+  - 强制Crypto市场
+  - 主流加密货币池
+  - 7×24小时交易
+  - USDT计价
+  - 无手数限制
 end note
 
 note right of DeepSeekChatOpenAI

@@ -1,223 +1,281 @@
-@startuml MCP Tool Interaction
+@startuml AI-Trader Data Flow
 !theme plain
 skinparam backgroundColor #FFFFFF
 
-title MCP工具交互图
+title AI-Trader数据流图
 
-participant "AI Agent" as Agent
-participant "MCP Client" as Client
-participant "Trade Tool\n(Port 8002)" as Trade
-participant "Price Tool\n(Port 8003)" as Price
-participant "Search Tool\n(Port 8001)" as Search
-participant "Math Tool\n(Port 8000)" as Math
-database "Position File" as PosFile
-database "Price Data" as PriceData
-boundary "Jina AI" as Jina
+skinparam component {
+    BackgroundColor<<config>> #E1F5FE
+    BackgroundColor<<market>> #FFF9C4
+    BackgroundColor<<position>> #C8E6C9
+    BackgroundColor<<log>> #FFECB3
+    BackgroundColor<<runtime>> #F3E5F5
+    BorderColor #424242
+}
 
-== MCP工具初始化 ==
+' 配置数据流
+package "配置数据流 Configuration Flow" {
+    file ".env" as ENV <<config>>
+    file "configs/*.json" as ConfigJSON <<config>>
+    file "runtime_env.json" as RuntimeEnv <<runtime>>
 
-Agent -> Client: 初始化MultiServerMCPClient(mcp_config)
-activate Client
+    note right of ENV
+      ENV : OPENAI_API_KEY
+      ENV : OPENAI_API_BASE
+      ENV : ALPHAADVANTAGE_API_KEY
+      ENV : JINA_API_KEY
+      ENV : TUSHARE_TOKEN
+      ENV : BINANCE_API_KEY
+      ENV : RUNTIME_ENV_PATH
+      ENV : MATH_HTTP_PORT=8000
+      ENV : ...
+    end note
 
-Client -> Trade: 连接 http://localhost:8002/mcp
-activate Trade
-Trade --> Client: 注册工具: buy(), sell()
-deactivate Trade
+    note right of ConfigJSON
+      ConfigJSON : agent_type
+      ConfigJSON : market
+      ConfigJSON : date_range
+      ConfigJSON : models[]
+      ConfigJSON : agent_config
+    end note
 
-Client -> Price: 连接 http://localhost:8003/mcp
-activate Price
-Price --> Client: 注册工具: get_price_local()
-deactivate Price
+    note right of RuntimeEnv
+      RuntimeEnv : SIGNATURE
+      RuntimeEnv : TODAY_DATE
+      RuntimeEnv : MARKET
+      RuntimeEnv : IF_TRADE
+      RuntimeEnv : LOG_FILE
+      RuntimeEnv : LOG_PATH
+    end note
+}
 
-Client -> Search: 连接 http://localhost:8001/mcp
-activate Search
-Search --> Client: 注册工具: get_information()
-deactivate Search
+' 市场数据流
+package "市场数据流 Market Data Flow" {
+    cloud "Alpha Vantage API" as AlphaAPI
+    cloud "Tushare API" as TushareAPI
+    cloud "Binance API" as BinanceAPI
 
-Client -> Math: 连接 http://localhost:8000/mcp
-activate Math
-Math --> Client: 注册工具: calculate()
-deactivate Math
+    file "data/daily_prices_*.json" as DailyJSON <<market>>
+    file "data/merged.jsonl" as USMerged <<market>>
+    file "data/A_stock/merged.jsonl" as CNMerged <<market>>
+    file "data/crypto/merged.jsonl" as CryptoMerged <<market>>
 
-Client --> Agent: 返回工具列表 [buy, sell, get_price_local, get_information, calculate]
-deactivate Client
+    note right of DailyJSON
+      DailyJSON : Symbol: AAPL
+      DailyJSON : Time Series (Daily)
+      DailyJSON : - date: OHLCV
+    end note
 
-== 工具调用示例：价格查询 ==
+    note right of USMerged
+      USMerged : {Meta Data, Time Series}
+      USMerged : 统一JSONL格式
+      USMerged : NASDAQ 100所有股票
+      USMerged : ---
+      USMerged : **统一数据格式**
+      USMerged : - JSONL行式存储
+      USMerged : - 每行一个股票的完整历史
+      USMerged : - 支持高效日期查询
+      USMerged : - 自动过滤未来数据
+    end note
 
-Agent -> Client: 调用工具\nget_price_local(symbol="AAPL", date="2025-10-01")
-activate Client
+    note right of CNMerged
+      CNMerged : {Meta Data, Time Series}
+      CNMerged : 统一JSONL格式
+      CNMerged : 上证50所有股票
+    end note
 
-Client -> Price: HTTP POST /mcp\n{"tool": "get_price_local", "params": {...}}
-activate Price
+    note right of CryptoMerged
+      CryptoMerged : {Meta Data, Time Series}
+      CryptoMerged : 统一JSONL格式
+      CryptoMerged : 主流加密货币(USDT交易对)
+      CryptoMerged : ---
+      CryptoMerged : **加密货币数据特点**
+      CryptoMerged : - 7×24小时连续数据
+      CryptoMerged : - USDT交易对
+      CryptoMerged : - 分钟级/小时级数据
+      CryptoMerged : - 实时更新
+    end note
+}
 
-Price -> PriceData: 读取 merged.jsonl\n查询 AAPL 在 2025-10-01 的数据
-activate PriceData
-PriceData --> Price: 返回价格数据\n{open: 255.88, close: 262.24, ...}
-deactivate PriceData
+' 持仓数据流
+package "持仓数据流 Position Flow" {
+    file "agent_data/{signature}/\nposition/position.jsonl" as USPosition <<position>>
+    file "agent_data_astock/{signature}/\nposition/position.jsonl" as CNPosition <<position>>
+    file "agent_data_crypto/{signature}/\nposition/position.jsonl" as CryptoPosition <<position>>
 
-Price --> Client: 返回结果
-deactivate Price
+    note right of USPosition
+      USPosition : date
+      USPosition : id
+      USPosition : this_action
+      USPosition :   - action (buy/sell/hold)
+      USPosition :   - symbol
+      USPosition :   - amount
+      USPosition : positions
+      USPosition :   - {symbol}: quantity
+      USPosition :   - CASH: balance
+      USPosition : ---
+      USPosition : **持仓记录特点**
+      USPosition : - 追加写入(append-only)
+      USPosition : - 文件锁保证原子性
+      USPosition : - 每次交易创建新记录
+      USPosition : - 保留完整历史轨迹
+    end note
 
-Client --> Agent: 工具执行结果
-deactivate Client
+    note right of CNPosition
+      CNPosition : date
+      CNPosition : id
+      CNPosition : this_action
+      CNPosition :   - action (buy/sell/hold)
+      CNPosition :   - symbol (带.SH/.SZ后缀)
+      CNPosition :   - amount (100股为单位)
+      CNPosition : positions
+      CNPosition :   - {symbol}: quantity
+      CNPosition :   - CASH: balance
+    end note
 
-note right of Price
-  价格查询逻辑
-  1. 从merged.jsonl读取指定symbol
-  2. 过滤到指定日期
-  3. 验证不返回未来数据
-  4. 返回OHLCV数据
+    note right of CryptoPosition
+      CryptoPosition : date
+      CryptoPosition : id
+      CryptoPosition : this_action
+      CryptoPosition :   - action (buy/sell/hold)
+      CryptoPosition :   - symbol (带-USDT后缀)
+      CryptoPosition :   - amount
+      CryptoPosition : positions
+      CryptoPosition :   - {symbol}: quantity
+      CryptoPosition :   - CASH: USDT balance
+      CryptoPosition : ---
+      CryptoPosition : **加密货币持仓特点**
+      CryptoPosition : - CASH用USDT计价
+      CryptoPosition : - 支持小数精度
+      CryptoPosition : - 无手数限制
+      CryptoPosition : - 7×24小时可交易
+    end note
+}
+
+' 日志数据流
+package "日志数据流 Log Flow" {
+    file "agent_data/{signature}/\nlog/{date}/log.jsonl" as USLog <<log>>
+    file "agent_data_astock/{signature}/\nlog/{date}/log.jsonl" as CNLog <<log>>
+    file "agent_data_crypto/{signature}/\nlog/{date}/log.jsonl" as CryptoLog <<log>>
+
+    note right of USLog
+      USLog : signature
+      USLog : new_messages[]
+      USLog :   - role (assistant/user/system)
+      USLog :   - content
+      USLog :     * AI分析内容
+      USLog :     * Tool调用请求
+      USLog :     * Tool返回结果
+      USLog : ---
+      USLog : **日志记录内容**
+      USLog : - AI完整推理过程
+      USLog : - 工具调用及结果
+      USLog : - 按日期分目录存储
+      USLog : - 可用于调试和分析
+    end note
+
+    note right of CNLog
+      CNLog : signature
+      CNLog : new_messages[]
+      CNLog :   - role (assistant/user/system)
+      CNLog :   - content
+      CNLog :     * A股市场分析
+      CNLog :     * Tool调用请求
+      CNLog :     * Tool返回结果
+    end note
+
+    note right of CryptoLog
+      CryptoLog : signature
+      CryptoLog : new_messages[]
+      CryptoLog :   - role (assistant/user/system)
+      CryptoLog :   - content
+      CryptoLog :     * 加密货币分析
+      CryptoLog :     * Tool调用请求
+      CryptoLog :     * Tool返回结果
+    end note
+}
+
+' 主程序
+rectangle "main.py" as Main {
+}
+
+' Agent层
+rectangle "BaseAgent/\nBaseAgentAStock/\nBaseAgentCrypto" as Agent {
+}
+
+' MCP工具层
+rectangle "MCP Tools" as MCP {
+    component "tool_trade" as Trade
+    component "tool_get_price_local" as Price
+    component "tool_jina_search" as Search
+}
+
+' 工具层
+rectangle "Utility Tools" as Utils {
+    component "general_tools" as GenTools
+    component "price_tools" as PriceTools
+}
+
+' ==== 数据流向 ====
+
+' 配置数据流向
+ENV -down-> Main : 读取环境变量
+ConfigJSON -down-> Main : 加载配置文件
+Main -down-> RuntimeEnv : 写入运行时配置
+RuntimeEnv <--> GenTools : 读写配置
+GenTools <--> Agent : 配置管理
+GenTools <--> MCP : 配置读取
+
+' 市场数据获取流
+AlphaAPI ..> DailyJSON : 获取数据\n(get_daily_price.py)
+DailyJSON ..> USMerged : 合并转换\n(merge_jsonl.py)
+TushareAPI ..> CNMerged : 获取并转换\n(get_daily_price_a_stock.py\n + merge_a_stock_jsonl.py)
+BinanceAPI ..> CryptoMerged : 获取并转换\n(get_crypto_price.py\n + merge_crypto_jsonl.py)
+
+' 市场数据读取流
+USMerged -down-> PriceTools : 读取US价格
+CNMerged -down-> PriceTools : 读取CN价格
+CryptoMerged -down-> PriceTools : 读取Crypto价格
+PriceTools -down-> Agent : 提供价格数据
+USMerged -down-> Price : MCP读取价格
+CNMerged -down-> Price : MCP读取价格
+CryptoMerged -down-> Price : MCP读取价格
+
+' 持仓数据流
+Agent --> USPosition : 初始化\n注册Agent
+Agent --> CNPosition : 初始化\n注册Agent
+Agent --> CryptoPosition : 初始化\n注册Agent
+USPosition <--> Trade : 读写US持仓
+CNPosition <--> Trade : 读写CN持仓
+CryptoPosition <--> Trade : 读写Crypto持仓
+USPosition <--> PriceTools : 读取持仓
+CNPosition <--> PriceTools : 读取持仓
+CryptoPosition <--> PriceTools : 读取持仓
+Trade --> Agent : 返回交易结果
+
+' 日志数据流
+Agent -down-> USLog : 记录US交易日志
+Agent -down-> CNLog : 记录CN交易日志
+Agent -down-> CryptoLog : 记录Crypto交易日志
+
+' Agent与工具交互
+Main -down-> Agent : 创建并初始化
+Agent <--> MCP : MCP工具调用
+Agent --> Search : 信息搜索
+
+note top of RuntimeEnv
+  **运行时共享配置**
+  - 所有Agent实例共享
+  - 文件锁保证并发安全
+  - 存储当前执行上下文
 end note
 
-== 工具调用示例：信息搜索 ==
-
-Agent -> Client: 调用工具\nget_information(query="AAPL最新财报")
-activate Client
-
-Client -> Search: HTTP POST /mcp\n{"tool": "get_information", "params": {...}}
-activate Search
-
-Search -> Jina: API请求\nJINA_API_KEY认证
-activate Jina
-Jina --> Search: 返回搜索结果
-deactivate Jina
-
-Search --> Client: 返回整理后的信息
-deactivate Search
-
-Client --> Agent: 工具执行结果
-deactivate Client
-
-note right of Search
-  搜索工具特点
-  - 调用Jina AI API
-  - 实时市场信息
-  - 支持中英文查询
-  - 可配置搜索范围
-end note
-
-== 工具调用示例：买入交易 ==
-
-Agent -> Client: 调用工具\nbuy(symbol="AAPL", amount=10)
-activate Client
-
-Client -> Trade: HTTP POST /mcp\n{"tool": "buy", "params": {...}}
-activate Trade
-
-Trade -> Trade: 检测市场类型\n(AAPL无后缀 -> US市场)
-
-Trade -> Trade: 获取配置\nSIGNATURE, TODAY_DATE, MARKET
-
-Trade -> Trade: 获取文件锁\n_position_lock(signature)
-
-Trade -> PosFile: 读取最新持仓\nget_latest_position()
-activate PosFile
-PosFile --> Trade: 返回当前持仓\n{AAPL: 0, CASH: 10000.0}
-deactivate PosFile
-
-Trade -> PriceData: 获取开盘价\nget_open_prices(TODAY_DATE, ["AAPL"])
-activate PriceData
-PriceData --> Trade: 返回价格 {AAPL: 255.88}
-deactivate PriceData
-
-Trade -> Trade: 验证交易条件\n✓ 现金充足: 10000 >= 2558.8\n✓ US市场无手数限制
-
-Trade -> Trade: 计算新持仓\nAPPL: 0 + 10 = 10\nCASH: 10000 - 2558.8 = 7441.2
-
-Trade -> PosFile: 写入新持仓记录\n(追加模式)
-activate PosFile
-PosFile --> Trade: 写入成功
-deactivate PosFile
-
-Trade -> Trade: 释放文件锁
-
-Trade --> Client: 返回成功\n{AAPL: 10, CASH: 7441.2, ...}
-deactivate Trade
-
-Client --> Agent: 工具执行结果
-deactivate Client
-
-note right of Trade
-  交易工具核心逻辑
-  1. 市场检测 (US/CN)
-  2. 规则验证
-     - US: T+0，无手数限制
-     - CN: T+1，100股为单位
-  3. 文件锁保证并发安全
-  4. 原子性更新持仓
-  5. 完整记录交易历史
-end note
-
-== 工具调用示例：卖出交易(A股) ==
-
-Agent -> Client: 调用工具\nsell(symbol="600519.SH", amount=200)
-activate Client
-
-Client -> Trade: HTTP POST /mcp\n{"tool": "sell", "params": {...}}
-activate Trade
-
-Trade -> Trade: 检测市场类型\n(.SH后缀 -> CN市场)
-
-Trade -> Trade: 验证手数\n200 % 100 == 0 ✓
-
-Trade -> Trade: 获取文件锁
-
-Trade -> PosFile: 读取最新持仓
-activate PosFile
-PosFile --> Trade: 返回当前持仓\n{600519.SH: 300, CASH: 50000}
-deactivate PosFile
-
-Trade -> Trade: 验证持仓数量\n300 >= 200 ✓
-
-Trade -> PriceData: 获取开盘价
-activate PriceData
-PriceData --> Trade: 返回价格 {600519.SH: 1850.00}
-deactivate PriceData
-
-Trade -> Trade: 计算新持仓\n600519.SH: 300 - 200 = 100\nCASH: 50000 + 370000 = 420000
-
-Trade -> PosFile: 写入新持仓记录
-activate PosFile
-PosFile --> Trade: 写入成功
-deactivate PosFile
-
-Trade -> Trade: 释放文件锁
-
-Trade --> Client: 返回成功\n{600519.SH: 100, CASH: 420000, ...}
-deactivate Trade
-
-Client --> Agent: 工具执行结果
-deactivate Client
-
-note right of Trade
-  A股特殊处理
-  - 股票代码后缀: .SH/.SZ
-  - 强制100股手数验证
-  - T+1结算(代码中标记)
-  - 人民币计价
-end note
-
-== 工具调用示例：数学计算 ==
-
-Agent -> Client: 调用工具\ncalculate(expression="(255.88 - 250) / 250 * 100")
-activate Client
-
-Client -> Math: HTTP POST /mcp\n{"tool": "calculate", "params": {...}}
-activate Math
-
-Math -> Math: 安全计算表达式\n结果: 2.352
-
-Math --> Client: 返回计算结果: 2.352
-deactivate Math
-
-Client --> Agent: 工具执行结果
-deactivate Client
-
-note right of Math
-  数学工具
-  - 安全的表达式计算
-  - 支持基本数学运算
-  - 避免eval安全问题
-end note
+legend right
+  |<#E1F5FE> 配置数据 |
+  |<#FFF9C4> 市场数据 |
+  |<#C8E6C9> 持仓数据 |
+  |<#FFECB3> 日志数据 |
+  |<#F3E5F5> 运行时配置 |
+endlegend
 
 @enduml

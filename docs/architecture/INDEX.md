@@ -13,9 +13,9 @@
 
 **关键要点**:
 - main.py动态加载Agent
-- BaseAgent vs BaseAgentAStock
+- BaseAgent vs BaseAgentAStock vs BaseAgentCrypto
 - MCP工具的4个核心服务
-- US/CN双市场数据隔离
+- US/CN/Crypto三大市场数据隔离
 
 ---
 
@@ -42,8 +42,9 @@
 **描述**: 核心类的结构、属性、方法和继承关系。
 
 **主要类**:
-- `BaseAgent` - 通用交易Agent
+- `BaseAgent` - 通用交易Agent (支持US/CN/Crypto)
 - `BaseAgentAStock` - A股专用Agent (继承自BaseAgent)
+- `BaseAgentCrypto` - 加密货币专用Agent (继承自BaseAgent)
 - `DeepSeekChatOpenAI` - API适配器
 - MCP工具类 - TradeTool, PriceTool, SearchTool, MathTool
 - 工具类 - GeneralTools, PriceTools, ResultTools
@@ -59,9 +60,9 @@
 
 **数据类型**:
 - **配置数据**: .env → configs/*.json → runtime_env.json
-- **市场数据**: Alpha Vantage/Tushare → merged.jsonl
-- **持仓数据**: position.jsonl (追加写入)
-- **日志数据**: log/{date}/log.jsonl (AI推理过程)
+- **市场数据**: Alpha Vantage/Tushare/Binance → merged.jsonl
+- **持仓数据**: position.jsonl (追加写入，三大市场独立存储)
+- **日志数据**: log/{date}/log.jsonl (AI推理过程，三大市场独立存储)
 
 ---
 
@@ -75,8 +76,9 @@
 **工具示例**:
 - **价格查询**: 从merged.jsonl读取OHLCV数据
 - **信息搜索**: 调用Jina AI API获取市场信息
-- **买入交易**: 验证条件、更新持仓(带文件锁)
+- **买入交易**: 验证条件、更新持仓(带文件锁) - US股票示例
 - **卖出交易**: 特别展示A股100股手数验证
+- **加密货币交易**: BTC-USDT交易，展示小数精度和7×24小时交易
 - **数学计算**: 安全的表达式计算
 
 ---
@@ -121,7 +123,9 @@ bash generate_diagrams.sh both
 | 如何开发新功能？ | → 核心类图 |
 | 数据存储在哪里？ | → 数据流图 |
 | MCP工具如何工作？ | → MCP工具交互图 |
-| US股票和A股有什么区别？ | → 系统架构图 + MCP工具交互图 |
+| 三大市场有什么区别？ | → 系统架构图 + MCP工具交互图 |
+| US股票和A股有什么区别？ | → MCP工具交互图 (卖出A股示例) |
+| 加密货币交易有何特点？ | → MCP工具交互图 (加密货币示例) + 数据流图 |
 | 如何添加新的Agent？ | → 核心类图 |
 | 持仓文件格式是什么？ | → 数据流图 |
 

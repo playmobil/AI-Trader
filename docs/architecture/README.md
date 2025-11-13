@@ -9,16 +9,16 @@
 
 **包含内容**:
 - 入口层 (main.py)
-- Agent层 (BaseAgent, BaseAgentAStock)
+- Agent层 (BaseAgent, BaseAgentAStock, BaseAgentCrypto)
 - MCP工具链 (trade, price, search, math)
-- 数据层 (US股票、A股数据)
+- 数据层 (US股票、A股、加密货币数据)
 - 工具层 (general_tools, price_tools, result_tools)
-- 外部服务 (OpenAI, Jina AI, Alpha Vantage, Tushare)
+- 外部服务 (OpenAI, Jina AI, Alpha Vantage, Tushare, Binance)
 
 **适用场景**:
 - 快速了解系统整体结构
 - 理解各模块职责划分
-- 查看数据流向
+- 查看三大市场数据流向
 
 ### 2. 交易流程图 (trading_flow.puml)
 **用途**: 展示从启动到完成交易的完整流程序列图
@@ -38,8 +38,9 @@
 **用途**: 展示核心类的结构、属性、方法和关系
 
 **主要类**:
-- BaseAgent - 通用交易Agent
+- BaseAgent - 通用交易Agent (支持US/CN/Crypto)
 - BaseAgentAStock - A股专用Agent
+- BaseAgentCrypto - 加密货币专用Agent
 - DeepSeekChatOpenAI - DeepSeek API适配器
 - MCP工具类 (TradeTool, PriceTool, SearchTool, MathTool)
 - 工具类 (GeneralTools, PriceTools, ResultTools)
@@ -49,20 +50,22 @@
 - 开发新功能
 - 理解类的设计
 - 查看继承和依赖关系
+- 了解三种Agent的差异
 
 ### 4. 数据流图 (data_flow.puml)
 **用途**: 展示数据如何在系统中流动
 
 **数据类型**:
 - 配置数据流 (.env, configs/*.json, runtime_env.json)
-- 市场数据流 (Alpha Vantage, Tushare -> merged.jsonl)
-- 持仓数据流 (position.jsonl)
-- 日志数据流 (log.jsonl)
+- 市场数据流 (Alpha Vantage, Tushare, Binance -> merged.jsonl)
+- 持仓数据流 (position.jsonl - US/CN/Crypto)
+- 日志数据流 (log.jsonl - US/CN/Crypto)
 
 **适用场景**:
 - 理解数据存储结构
-- 追踪数据来源和去向
+- 追踪三大市场数据来源和去向
 - 优化数据访问性能
+- 了解加密货币数据特点
 
 ### 5. MCP工具交互图 (mcp_interaction.puml)
 **用途**: 详细展示MCP工具的工作机制
@@ -73,12 +76,14 @@
 - 信息搜索工具示例
 - 买入交易工具示例 (US股票)
 - 卖出交易工具示例 (A股)
+- 加密货币交易示例 (BTC-USDT)
 - 数学计算工具示例
 
 **适用场景**:
 - 理解MCP协议如何工作
 - 开发新的MCP工具
 - 调试工具调用问题
+- 了解三大市场交易规则差异
 
 ## 🔧 如何查看架构图
 
