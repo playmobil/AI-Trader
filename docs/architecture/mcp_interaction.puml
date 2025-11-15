@@ -271,7 +271,9 @@ note right of Math
   - 用于收益率等计算
 end note
 
-note bottom of PosFile
+== 数据存储说明 ==
+
+note over PosFile
   **A股持仓文件特点**
   - 路径: agent_data_astock/{signature}/position/
   - 格式: position.jsonl
@@ -281,7 +283,7 @@ note bottom of PosFile
   - 人民币计价
 end note
 
-note bottom of PriceData
+note over PriceData
   **A股价格数据**
   - 路径: data/A_stock/merged.jsonl
   - 数据源: Tushare API
@@ -290,5 +292,6 @@ note bottom of PriceData
   - T+1交易日历
   - 自动过滤未来数据
 end note
+
 
 @enduml

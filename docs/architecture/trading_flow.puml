@@ -203,7 +203,7 @@ note over User, Tushare
   - 可用于绩效分析
 end note
 
-note bottom of Data
+note over Data
   **A股持仓文件特点**
   - 路径: agent_data_astock/{signature}/position/
   - 格式: position.jsonl
@@ -213,7 +213,7 @@ note bottom of Data
   - 人民币计价
 end note
 
-note bottom of MCP
+note over MCP
   **A股交易核心规则**
   1. 市场检测 (CN A股)
   2. 规则验证

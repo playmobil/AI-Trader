@@ -77,6 +77,7 @@ logs/
 test.py
 delete.py
 refresh_data.sh
+temp4test/
 
 # Config files (optional - uncomment if needed)
 configs/day_config.json
