@@ -24,7 +24,9 @@
       "name": "qwen3-max",
       "basemodel": "qwen3-max",
       "signature": "qwen3-max",
-      "enabled": false
+      "enabled": true,
+      "openai_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "openai_api_key": "sk-ff6c03c503954dd497b260922516ce4f"
     },
     {
       "name": "gemini-2.5-flash",
